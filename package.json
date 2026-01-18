@@ -1,0 +1,14 @@
+{
+  "name": "text-share",
+  "version": "1.0.0",
+  "description": "Real-time collaborative code/markdown editor",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0",
+    "yjs": "^13.6.10",
+    "bcrypt": "^5.1.1"
+  }
+}
