@@ -21,6 +21,10 @@ let isAuthenticated = false;
 let editor = null;
 let isApplyingRemoteUpdate = false;
 let sharedFiles = new Map(); // Store shared files
+let reconnectAttempts = 0;
+let maxReconnectAttempts = 10;
+let reconnectTimeout = null;
+let savedPassword = null; // Store password for reconnection
 
 // Initialize WebSocket connection
 function initWebSocket() {
@@ -28,6 +32,8 @@ function initWebSocket() {
   ws = new WebSocket(`${protocol}//${window.location.host}`);
 
   ws.onopen = () => {
+    console.log('WebSocket connected');
+    reconnectAttempts = 0; // Reset reconnect attempts on successful connection
     updateConnectionStatus('Connected', 'text-green-500');
     ws.send(JSON.stringify({ type: 'join', key: documentKey }));
   };
@@ -38,7 +44,16 @@ function initWebSocket() {
     if (data.type === 'needsPasswordSetup') {
       showPasswordModal(true);
     } else if (data.type === 'needsPassword') {
-      showPasswordModal(false);
+      // Auto-authenticate if we have saved password (reconnection)
+      if (savedPassword) {
+        setTimeout(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'verifyPassword', password: savedPassword }));
+          }
+        }, 100);
+      } else {
+        showPasswordModal(false);
+      }
     } else if (data.type === 'authenticated') {
       isAuthenticated = true;
       hidePasswordModal();
@@ -101,15 +116,58 @@ function initWebSocket() {
   };
 
   ws.onclose = () => {
+    console.log('WebSocket disconnected');
     updateConnectionStatus('Disconnected', 'text-red-500');
     isAuthenticated = false;
+
+    // Attempt to reconnect
+    attemptReconnect();
   };
 
   ws.onerror = (error) => {
     console.error('WebSocket error:', error);
-    updateConnectionStatus('Error', 'text-red-500');
+    updateConnectionStatus('Connection Error', 'text-red-500');
   };
 }
+
+// Reconnection logic
+function attemptReconnect() {
+  if (reconnectAttempts < maxReconnectAttempts) {
+    reconnectAttempts++;
+    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 30000); // Exponential backoff, max 30s
+
+    updateConnectionStatus(`Reconnecting (${reconnectAttempts}/${maxReconnectAttempts})...`, 'text-yellow-500');
+
+    reconnectTimeout = setTimeout(() => {
+      console.log(`Reconnection attempt ${reconnectAttempts}...`);
+      initWebSocket();
+    }, delay);
+  } else {
+    updateConnectionStatus('Connection Failed', 'text-red-500');
+    showReconnectButton();
+  }
+}
+
+// Show manual reconnect button
+function showReconnectButton() {
+  const statusEl = document.getElementById('connectionStatus');
+  statusEl.innerHTML = `
+    <button
+      onclick="manualReconnect()"
+      class="text-sm bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded transition"
+    >
+      Reconnect
+    </button>
+  `;
+}
+
+// Manual reconnect function
+window.manualReconnect = function() {
+  reconnectAttempts = 0;
+  clearTimeout(reconnectTimeout);
+  updateConnectionStatus('Connecting...', 'text-yellow-500');
+  initWebSocket();
+};
 
 // Show password modal
 function showPasswordModal(isSetup) {
@@ -159,6 +217,9 @@ document.getElementById('passwordSubmit').addEventListener('click', () => {
     showPasswordError('Password cannot be empty');
     return;
   }
+
+  // Save password for automatic reconnection
+  savedPassword = password;
 
   const modalTitle = document.getElementById('modalTitle').textContent;
   if (modalTitle === 'Set Password') {
