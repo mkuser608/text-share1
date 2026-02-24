@@ -20,6 +20,7 @@ let ws = null;
 let isAuthenticated = false;
 let editor = null;
 let isApplyingRemoteUpdate = false;
+let sharedFiles = new Map(); // Store shared files
 
 // Initialize WebSocket connection
 function initWebSocket() {
@@ -46,6 +47,8 @@ function initWebSocket() {
       if (!editor) {
         initEditor();
       }
+      // Request file list after authentication
+      requestFileList();
     } else if (data.type === 'sync') {
       // Apply initial sync
       if (data.update && data.update.length > 0) {
@@ -80,6 +83,20 @@ function initWebSocket() {
       updateUserCount(data.count);
     } else if (data.type === 'error') {
       showPasswordError(data.message);
+    } else if (data.type === 'fileList') {
+      // Receive list of existing files
+      data.files.forEach(file => {
+        sharedFiles.set(file.id, file);
+        addFileToUI(file);
+      });
+    } else if (data.type === 'fileAdded') {
+      // New file added
+      sharedFiles.set(data.file.id, data.file);
+      addFileToUI(data.file);
+    } else if (data.type === 'fileDeleted') {
+      // File deleted
+      sharedFiles.delete(data.fileId);
+      removeFileFromUI(data.fileId);
     }
   };
 
@@ -282,6 +299,173 @@ ydoc.on('update', (update) => {
     }));
   }
 });
+
+// File handling functions
+function addFileToUI(file) {
+  const fileList = document.getElementById('fileList');
+
+  // Remove "no files" message if it exists
+  const noFilesMsg = fileList.querySelector('p');
+  if (noFilesMsg) {
+    noFilesMsg.remove();
+  }
+
+  // Check if file already exists in UI
+  if (document.getElementById(`file-${file.id}`)) {
+    return;
+  }
+
+  const fileElement = document.createElement('div');
+  fileElement.id = `file-${file.id}`;
+  fileElement.className = 'bg-white border border-gray-200 rounded-lg p-3 hover:shadow-md transition';
+
+  const fileSize = formatFileSize(file.size);
+  const fileIcon = getFileIcon(file.type);
+
+  fileElement.innerHTML = `
+    <div class="flex items-start justify-between">
+      <div class="flex items-start gap-2 flex-1 min-w-0">
+        <div class="text-2xl">${fileIcon}</div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-gray-800 truncate" title="${file.name}">${file.name}</p>
+          <p class="text-xs text-gray-500">${fileSize}</p>
+        </div>
+      </div>
+      <div class="flex gap-1 ml-2">
+        <button
+          onclick="downloadFile('${file.id}')"
+          class="p-1.5 hover:bg-blue-50 rounded transition"
+          title="Download"
+        >
+          <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+          </svg>
+        </button>
+        <button
+          onclick="deleteFile('${file.id}')"
+          class="p-1.5 hover:bg-red-50 rounded transition"
+          title="Delete"
+        >
+          <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  `;
+
+  fileList.appendChild(fileElement);
+}
+
+function removeFileFromUI(fileId) {
+  const fileElement = document.getElementById(`file-${fileId}`);
+  if (fileElement) {
+    fileElement.remove();
+  }
+
+  // Show "no files" message if list is empty
+  const fileList = document.getElementById('fileList');
+  if (fileList.children.length === 0) {
+    fileList.innerHTML = '<p class="text-gray-400 text-sm text-center mt-8">No files shared yet</p>';
+  }
+}
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+function getFileIcon(mimeType) {
+  if (mimeType.startsWith('image/')) return '🖼️';
+  if (mimeType.startsWith('video/')) return '🎥';
+  if (mimeType.startsWith('audio/')) return '🎵';
+  if (mimeType.includes('pdf')) return '📄';
+  if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('7z')) return '📦';
+  if (mimeType.includes('text/')) return '📝';
+  if (mimeType.includes('word')) return '📘';
+  if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return '📊';
+  if (mimeType.includes('powerpoint') || mimeType.includes('presentation')) return '📙';
+  return '📎';
+}
+
+// Make functions global for onclick handlers
+window.downloadFile = function(fileId) {
+  const file = sharedFiles.get(fileId);
+  if (!file) return;
+
+  // Convert base64 to blob
+  const byteCharacters = atob(file.data);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  const blob = new Blob([byteArray], { type: file.type });
+
+  // Create download link
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+window.deleteFile = function(fileId) {
+  if (confirm('Are you sure you want to delete this file?')) {
+    if (ws && ws.readyState === WebSocket.OPEN && isAuthenticated) {
+      ws.send(JSON.stringify({
+        type: 'deleteFile',
+        fileId: fileId
+      }));
+    }
+  }
+};
+
+// Handle file upload
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files);
+
+  for (const file of files) {
+    // Limit file size to 10MB
+    if (file.size > 10 * 1024 * 1024) {
+      alert(`File "${file.name}" is too large. Maximum size is 10MB.`);
+      continue;
+    }
+
+    // Read file as base64
+    const reader = new FileReader();
+    reader.onload = function(event) {
+      const base64Data = event.target.result.split(',')[1];
+
+      if (ws && ws.readyState === WebSocket.OPEN && isAuthenticated) {
+        ws.send(JSON.stringify({
+          type: 'uploadFile',
+          name: file.name,
+          size: file.size,
+          mimeType: file.type || 'application/octet-stream',
+          data: base64Data
+        }));
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Clear input
+  e.target.value = '';
+});
+
+// Request files after authentication
+function requestFileList() {
+  if (ws && ws.readyState === WebSocket.OPEN && isAuthenticated) {
+    ws.send(JSON.stringify({ type: 'requestFiles' }));
+  }
+}
 
 // Initialize
 initWebSocket();

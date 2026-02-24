@@ -86,7 +86,8 @@ wss.on('connection', (ws, req) => {
           documents.set(currentKey, {
             ydoc,
             passwordHash,
-            connectedClients: new Set()
+            connectedClients: new Set(),
+            files: new Map() // Store shared files
           });
 
           isAuthenticated = true;
@@ -164,6 +165,79 @@ wss.on('connection', (ws, req) => {
               }));
             }
           });
+        }
+      }
+
+      // Handle file upload
+      else if (data.type === 'uploadFile' && isAuthenticated) {
+        const doc = documents.get(currentKey);
+        if (doc) {
+          const fileId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const fileData = {
+            id: fileId,
+            name: data.name,
+            size: data.size,
+            type: data.mimeType,
+            data: data.data,
+            uploadedAt: new Date().toISOString()
+          };
+
+          doc.files.set(fileId, fileData);
+
+          // Broadcast file to all connected clients
+          doc.connectedClients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({
+                type: 'fileAdded',
+                file: {
+                  id: fileData.id,
+                  name: fileData.name,
+                  size: fileData.size,
+                  type: fileData.type,
+                  data: fileData.data,
+                  uploadedAt: fileData.uploadedAt
+                }
+              }));
+            }
+          });
+        }
+      }
+
+      // Handle file deletion
+      else if (data.type === 'deleteFile' && isAuthenticated) {
+        const doc = documents.get(currentKey);
+        if (doc && doc.files.has(data.fileId)) {
+          doc.files.delete(data.fileId);
+
+          // Broadcast file deletion to all connected clients
+          doc.connectedClients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({
+                type: 'fileDeleted',
+                fileId: data.fileId
+              }));
+            }
+          });
+        }
+      }
+
+      // Handle request for file list
+      else if (data.type === 'requestFiles' && isAuthenticated) {
+        const doc = documents.get(currentKey);
+        if (doc) {
+          const fileList = Array.from(doc.files.values()).map(file => ({
+            id: file.id,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            data: file.data,
+            uploadedAt: file.uploadedAt
+          }));
+
+          ws.send(JSON.stringify({
+            type: 'fileList',
+            files: fileList
+          }));
         }
       }
 
