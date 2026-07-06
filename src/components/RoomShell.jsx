@@ -15,7 +15,7 @@ const TABS = [
   ['call', '🎥', 'Call'],
 ]
 
-export default function RoomShell({ conn, joined, roomKey }) {
+export default function RoomShell({ conn, joined, roomKey, initialTab }) {
   const [ctx] = useState(() => {
     const ydoc = new Y.Doc()
     const awareness = new Awareness(ydoc)
@@ -25,7 +25,7 @@ export default function RoomShell({ conn, joined, roomKey }) {
   })
   const { ydoc, awareness, pm, fs } = ctx
 
-  const [tab, setTab] = useState('editor')
+  const [tab, setTab] = useState(initialTab || 'editor')
   const [peers, setPeers] = useState(() => joined.peers.filter(p => p.role !== 'agent'))
   const [files, setFiles] = useState(joined.files)
   const [copied, setCopied] = useState(false)

@@ -12,52 +12,84 @@
   header { padding:16px 18px 10px; display:flex; align-items:center; gap:8px; }
   header .logo { font-size:20px; } header b { font-size:15px; }
   main { flex:1; padding:6px 18px 18px; overflow-y:auto; }
-  .card { background:#111827; border:1px solid #1f2937; border-radius:14px; padding:16px; }
+  .card { background:#111827; border:1px solid #1f2937; border-radius:14px; padding:16px; margin-bottom:12px; }
   .status { display:flex; align-items:center; gap:8px; font-size:14px; }
   .dot { width:10px; height:10px; border-radius:50%; background:#64748b; }
   .dot.ok{background:#34d399;box-shadow:0 0 0 4px #34d39922} .dot.warn{background:#fbbf24}
   .dot.bad{background:#f87171} .dot.live{background:#f87171;animation:pulse 1s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
   .muted{color:#94a3b8;font-size:12px;margin-top:4px}
-  .row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
-  button{border:0;border-radius:10px;padding:10px 14px;font-weight:600;font-size:13px;cursor:pointer}
-  .primary{background:#38bdf8;color:#06283b} .danger{background:#f43f5e;color:#fff} .ghost{background:#1f2937;color:#cbd5e1}
-  label.chk{display:flex;align-items:center;gap:8px;font-size:13px;margin-top:12px;color:#cbd5e1}
-  input[type=text]{width:100%;background:#0b1220;border:1px solid #334155;color:#e2e8f0;border-radius:10px;padding:10px;font-size:13px;margin-top:8px}
-  .controllers{margin-top:12px}
+  label{display:block;font-size:12px;color:#94a3b8;margin:12px 0 4px}
+  input{width:100%;background:#0b1220;border:1px solid #334155;color:#e2e8f0;border-radius:10px;padding:11px;font-size:14px}
+  .row{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
+  button{border:0;border-radius:10px;padding:11px 16px;font-weight:700;font-size:14px;cursor:pointer}
+  .primary{background:#38bdf8;color:#06283b;width:100%} .danger{background:#f43f5e;color:#fff}
+  .ghost{background:#1f2937;color:#cbd5e1} .link{background:none;color:#38bdf8;padding:6px 0;font-weight:600;font-size:12px}
+  .big{font-size:30px;font-weight:800;letter-spacing:3px;color:#e2e8f0;text-align:center;padding:10px;background:#0b1220;border:1px dashed #334155;border-radius:12px;user-select:all}
+  .kv{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px}
+  .kv .v{font-weight:700}
   .controllers .who{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0}
-  details{margin-top:14px} summary{cursor:pointer;color:#94a3b8;font-size:12px}
   .warn-box{margin-top:12px;background:#3f1d1d;border:1px solid #7f1d1d;color:#fecaca;border-radius:10px;padding:10px;font-size:12px}
-  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;background:#1e293b;color:#94a3b8;margin-left:6px}
+  .hide{display:none}
+  .copybtn{font-size:11px;background:#1e293b;color:#cbd5e1;border-radius:8px;padding:6px 10px}
 </style>
 </head>
 <body>
-  <header><span class="logo">⚡</span><b>ShareHub Desktop</b><span class="pill" id="verPill">host</span></header>
+  <header><span class="logo">⚡</span><b>ShareHub Desktop</b></header>
   <main>
-    <div class="card">
-      <div class="status"><span class="dot" id="dot"></span><span id="statusText">Idle</span></div>
-      <div class="muted" id="roomLine">Waiting for a connection link…</div>
+    <!-- SETUP VIEW -->
+    <div id="setupView">
+      <div class="card">
+        <div style="font-weight:700;font-size:15px">Make this computer shareable</div>
+        <div class="muted">Give out the Remote ID + password below and anyone can view &amp; control this PC from the ShareHub website.</div>
 
-      <div class="row">
-        <button class="primary" id="shareBtn" style="display:none">Share my screen</button>
-        <button class="ghost" id="stopShareBtn" style="display:none">Stop sharing</button>
+        <label>Server URL</label>
+        <input id="server" placeholder="https://your-sharehub-host" />
+
+        <label>Remote ID</label>
+        <div class="row" style="margin-top:4px">
+          <input id="rid" style="flex:1" />
+          <button class="ghost" id="regen" title="Generate a new ID">↻</button>
+        </div>
+
+        <label>Access password</label>
+        <input id="pw" type="text" placeholder="set a password" />
+
+        <div class="row"><button class="primary" id="startBtn">Start hosting this PC</button></div>
+      </div>
+    </div>
+
+    <!-- HOSTING VIEW -->
+    <div id="hostView" class="hide">
+      <div class="card">
+        <div class="status"><span class="dot" id="dot"></span><span id="statusText">Starting…</span></div>
+        <div class="muted" id="subText"></div>
       </div>
 
-      <div class="controllers" id="controllers"></div>
-
-      <label class="chk"><input type="checkbox" id="approve" /> Ask me before allowing each new controller</label>
-
-      <div class="row">
-        <button class="danger" id="disconnect" style="display:none">Disconnect &amp; cut control</button>
+      <div class="card">
+        <div class="muted">Remote ID — share this to let someone connect</div>
+        <div class="big" id="ridOut">—</div>
+        <div class="kv"><span class="muted">Password</span>
+          <span><span class="v" id="pwOut">—</span>
+            <button class="copybtn" id="copyBtn">Copy both</button></span></div>
+        <div class="muted" id="urlOut" style="margin-top:10px"></div>
       </div>
 
-      <div class="warn-box">⚠️ While connected, people you allow can see this screen and control its mouse &amp; keyboard. Close this window or click Disconnect to stop instantly.</div>
+      <div class="card controllers" id="controllersCard">
+        <div class="muted" id="ctlHint">No one is connected yet.</div>
+        <div id="controllers"></div>
+        <label class="row" style="gap:8px;color:#cbd5e1;font-size:13px;margin-top:10px">
+          <input type="checkbox" id="approve" style="width:auto" /> Ask me before allowing each new controller
+        </label>
+      </div>
 
-      <details>
-        <summary>Connect manually (paste a sharehub:// link)</summary>
-        <input type="text" id="manual" placeholder="sharehub://join?s=...&r=...&p=...&t=..." />
-        <div class="row"><button class="ghost" id="manualGo">Connect</button></div>
-      </details>
+      <div class="card">
+        <div class="row">
+          <button class="ghost" id="reshareBtn">Re-share screen</button>
+          <button class="danger" id="disconnect">Stop hosting</button>
+        </div>
+        <div class="warn-box">⚠️ While hosting, people with the ID + password can see this screen and control its mouse &amp; keyboard. Click “Stop hosting” or close this window to cut access instantly.</div>
+      </div>
     </div>
   </main>
 
@@ -67,9 +99,22 @@
   const invoke = T ? T.core.invoke : async (c,a)=>{ console.log('[stub invoke]',c,a); };
   const listen = T ? T.event.listen : async ()=>(()=>{});
   const $ = (id)=>document.getElementById(id);
-  const dot=$('dot'), statusText=$('statusText'), roomLine=$('roomLine'),
-        disconnectBtn=$('disconnect'), controllersEl=$('controllers'), approveBox=$('approve'),
-        shareBtn=$('shareBtn'), stopShareBtn=$('stopShareBtn');
+
+  const LS = window.localStorage;
+  const DEFAULT_SERVER = 'http://localhost:3000';
+  function genId(){ let s=''; for(let i=0;i<9;i++) s+=Math.floor(Math.random()*10); return s; }
+  function fmtId(s){ return String(s).replace(/\D/g,'').replace(/(\d{3})(?=\d)/g,'$1 ').trim(); }
+
+  // ---- persisted config ----
+  let cfg = {
+    server: LS.getItem('sh_server') || DEFAULT_SERVER,
+    id:     LS.getItem('sh_id') || genId(),
+    pw:     LS.getItem('sh_pw') || Math.random().toString(36).slice(2,8),
+  };
+  LS.setItem('sh_id', cfg.id); LS.setItem('sh_pw', cfg.pw); LS.setItem('sh_server', cfg.server);
+
+  $('server').value = cfg.server; $('rid').value = fmtId(cfg.id); $('pw').value = cfg.pw;
+  $('regen').onclick = ()=>{ cfg.id = genId(); $('rid').value = fmtId(cfg.id); };
 
   const ICE = { iceServers: [
     { urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302'] },
@@ -78,37 +123,23 @@
     { urls:'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject' },
   ] };
 
-  let ws=null, selfId=null, ownerId=null, token=null, conf=null, screenStream=null;
-  const peers=new Map();               // peerId -> { pc, dc, polite, makingOffer, ignoreOffer, candQueue }
-  const controllers=new Map();         // peerId -> name
-  const pendingApproval=new Set();
+  let ws=null, selfId=null, conf=null, screenStream=null;
+  const peers=new Map(), controllers=new Map(), pendingApproval=new Set();
 
-  function setStatus(kind,text,sub){ dot.className='dot '+(kind||''); statusText.textContent=text; if(sub!==undefined) roomLine.textContent=sub; }
+  function showHosting(){ $('setupView').classList.add('hide'); $('hostView').classList.remove('hide'); }
+  function setStatus(kind,text,sub){ $('dot').className='dot '+(kind||''); $('statusText').textContent=text; if(sub!==undefined) $('subText').textContent=sub; }
   function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
   function renderControllers(){
-    disconnectBtn.style.display = ws ? '' : 'none';
-    shareBtn.style.display = (ws && !screenStream) ? '' : 'none';
-    stopShareBtn.style.display = (ws && screenStream) ? '' : 'none';
-    controllersEl.innerHTML = controllers.size
-      ? '<div class="muted">Controlling this PC now:</div>' + [...controllers.values()].map(n=>`<div class="who"><span class="dot live"></span>${esc(n)}</div>`).join('')
-      : (screenStream ? '<div class="muted">Screen is being shared. Waiting for someone to take control…</div>' : '');
-  }
-
-  function parseLink(url){
-    try{
-      const p=new URLSearchParams((url.split('?')[1]||''));
-      const server=decodeURIComponent(p.get('s')||''); const room=decodeURIComponent(p.get('r')||'');
-      const password=decodeURIComponent(p.get('p')||''); const tk=p.get('t')||''; const name=decodeURIComponent(p.get('n')||'')||'This PC';
-      if(!server||!room) return null;
-      const wsUrl=server.replace(/^http/,'ws').replace(/\/+$/,'')+'/ws';
-      return { wsUrl, room, password, name, token:tk };
-    }catch{ return null; }
+    const has = controllers.size>0;
+    $('ctlHint').textContent = has ? '' : (screenStream ? 'Screen shared. Waiting for someone to connect…' : 'No one is connected yet.');
+    $('controllers').innerHTML = has
+      ? '<div class="muted">Connected now:</div>'+[...controllers.values()].map(n=>`<div class="who"><span class="dot live"></span>${esc(n)}</div>`).join('')
+      : '';
   }
 
   const relay=(to,d)=> ws&&ws.readyState===1&&ws.send(JSON.stringify({type:'relay',to,d}));
   const signal=(to,d)=> ws&&ws.readyState===1&&ws.send(JSON.stringify({type:'signal',to,d}));
 
-  // ---------- WebRTC (send our screen to each viewer) ----------
   function addPeer(id){
     if(peers.has(id)) return;
     const polite = String(selfId) > String(id);
@@ -144,49 +175,47 @@
   async function startShare(){
     try{
       screenStream = await navigator.mediaDevices.getDisplayMedia({ video:{ frameRate:15 }, audio:false });
-      screenStream.getVideoTracks()[0].addEventListener('ended', stopShare);
+      screenStream.getVideoTracks()[0].addEventListener('ended', ()=>{ screenStream=null; renderControllers(); });
       for(const [,p] of peers){ for(const t of screenStream.getTracks()) p.pc.addTrack(t, screenStream);
         if(p.dc&&p.dc.readyState==='open') p.dc.send(JSON.stringify({t:'stream-meta',sid:screenStream.id,kind:'screen'})); }
-      setStatus('ok','Sharing screen — ready for control', roomLine.textContent); renderControllers();
-    }catch(e){ if(e && e.name!=='NotAllowedError') setStatus('bad','Screen share failed: '+e.message); }
-  }
-  function stopShare(){
-    if(!screenStream) return;
-    for(const [,p] of peers){ for(const s of p.pc.getSenders()){ if(s.track&&s.track.kind==='video'){ try{p.pc.removeTrack(s);}catch{} } } }
-    screenStream.getTracks().forEach(t=>t.stop()); screenStream=null; renderControllers();
-    setStatus('ok','Connected — screen not shared', roomLine.textContent);
+      renderControllers();
+    }catch(e){ if(e && e.name!=='NotAllowedError') setStatus('warn','Connected — screen not shared (click Re-share)'); }
   }
 
-  // ---------- room connection ----------
   function connect(c){
     if(ws){ try{ws.close();}catch{} }
-    conf=c; token=c.token; controllers.clear(); ownerId=null; renderControllers();
-    setStatus('warn','Connecting…',`Room "${c.room}"`);
+    conf=c; controllers.clear(); renderControllers();
+    showHosting();
+    $('ridOut').textContent = fmtId(c.room); $('pwOut').textContent = c.password;
+    $('urlOut').textContent = 'Website: ' + c.server;
+    setStatus('warn','Connecting…', `Server ${c.server}`);
     ws=new WebSocket(c.wsUrl);
     ws.onopen=()=>ws.send(JSON.stringify({type:'hello',key:c.room}));
     ws.onmessage=(e)=>{ let m; try{m=JSON.parse(e.data);}catch{return;} onMsg(m); };
-    ws.onclose=()=>{ setStatus('bad','Disconnected','Connection closed'); disconnectBtn.style.display='none'; ws=null; };
+    ws.onclose=()=>{ setStatus('bad','Disconnected — retrying','Connection closed'); if(conf) setTimeout(()=>connect(conf),2000); };
     ws.onerror=()=>{};
   }
-
-  function announce(){ relay('*',{t:'agent-bind', agentId:selfId, ownerId:selfId}); relay('*',{t:'agent-ready', agentId:selfId, token}); }
 
   function onMsg(m){
     switch(m.type){
       case 'room-status':
-        if(!m.exists){ setStatus('bad','Room not found','Ask the host to open the room first'); return; }
-        ws.send(JSON.stringify({type:'join', password:conf.password, name:conf.name, role:'human'}));
+        // become the host: create the room if it's new, else join it
+        ws.send(JSON.stringify({type: m.exists ? 'join' : 'create', password:conf.password, name:'🖥️ '+(conf.name||'Remote PC'), role:'human'}));
         break;
-      case 'error': setStatus('bad', m.code==='badpass'?'Wrong password':(m.message||'Error'),''); break;
+      case 'error':
+        if(m.code==='badpass') setStatus('bad','This ID is taken with a different password','Change the ID or password and restart');
+        else setStatus('bad', m.message||'Error','');
+        break;
       case 'joined':
         selfId=m.selfId;
-        setStatus('ok','Connected', `Room "${conf.room}" · ${conf.name}`);
-        disconnectBtn.style.display='';
+        setStatus('ok','This computer is now shareable', 'Anyone with the ID + password can connect');
         (m.peers||[]).forEach(p=>{ if(p.role!=='agent') addPeer(p.id); });
-        announce();
-        startShare(); // auto-offer to share the whole screen (host picks the screen once)
+        relay('*',{t:'agent-bind', agentId:selfId, ownerId:selfId});
+        startShare();
         break;
-      case 'peer-joined': if(m.role!=='agent'){ addPeer(m.id); announce(); } break;
+      case 'peer-joined':
+        if(m.role!=='agent'){ addPeer(m.id); relay('*',{t:'agent-bind', agentId:selfId, ownerId:selfId}); }
+        break;
       case 'peer-left': removePeer(m.id); if(controllers.delete(m.id)) renderControllers(); break;
       case 'signal': onSignal(m.from, m.d); break;
       case 'relay': onRelay(m.from, m.d); break;
@@ -195,7 +224,7 @@
 
   async function allow(from, who){
     if(controllers.has(from)) return true;
-    if(approveBox.checked){ if(pendingApproval.has(from)) return false; pendingApproval.add(from);
+    if($('approve').checked){ if(pendingApproval.has(from)) return false; pendingApproval.add(from);
       const ok=confirm(`Allow "${who}" to control this PC?`); pendingApproval.delete(from);
       if(!ok){ relay(from,{t:'rc-deny'}); return false; } }
     controllers.set(from, who); renderControllers();
@@ -204,18 +233,36 @@
   }
   async function onRelay(from, d){
     if(!d||!d.t) return;
-    if(d.t==='rc-request'){ await allow(from, d.name||'A peer'); return; }
+    if(d.t==='rc-request'){ await allow(from, d.name||'A user'); return; }
     if(d.t==='rc-stop'){ if(controllers.delete(from)) renderControllers(); return; }
-    if(d.t==='unpair'){ disconnectBtn.click(); return; }
-    if(d.t.startsWith('rc-')){ if(!controllers.has(from)){ if(!(await allow(from,'A peer'))) return; } invoke('inject',{ev:d}).catch(()=>{}); }
+    if(d.t.startsWith('rc-')){ if(!controllers.has(from)){ if(!(await allow(from,'A user'))) return; } invoke('inject',{ev:d}).catch(()=>{}); }
   }
 
-  disconnectBtn.onclick=()=>{ stopShare(); for(const id of [...peers.keys()]) removePeer(id); if(ws){try{ws.close();}catch{}} ws=null; controllers.clear(); renderControllers(); setStatus('','Disconnected','You can close this window'); };
-  shareBtn.onclick=startShare; stopShareBtn.onclick=stopShare;
-  $('manualGo').onclick=()=>{ const c=parseLink($('manual').value.trim()); if(c) connect(c); else setStatus('bad','Invalid link',''); };
+  function startHosting(){
+    cfg.server = ($('server').value.trim() || DEFAULT_SERVER).replace(/\/+$/,'');
+    cfg.id = ($('rid').value.replace(/\D/g,'') || genId());
+    cfg.pw = ($('pw').value.trim() || Math.random().toString(36).slice(2,8));
+    LS.setItem('sh_server',cfg.server); LS.setItem('sh_id',cfg.id); LS.setItem('sh_pw',cfg.pw);
+    const wsUrl = cfg.server.replace(/^http/,'ws')+'/ws';
+    connect({ wsUrl, server:cfg.server, room:cfg.id, password:cfg.pw, name:'Remote PC' });
+  }
+  $('startBtn').onclick = startHosting;
+  $('reshareBtn').onclick = startShare;
+  $('copyBtn').onclick = ()=>{ try{ navigator.clipboard.writeText(`ShareHub — ID: ${fmtId(cfg.id)}  Password: ${cfg.pw}  (${cfg.server})`); $('copyBtn').textContent='Copied!'; setTimeout(()=>$('copyBtn').textContent='Copy both',1500); }catch{} };
+  $('disconnect').onclick=()=>{ conf=null; if(screenStream){screenStream.getTracks().forEach(t=>t.stop());screenStream=null;} for(const id of [...peers.keys()]) removePeer(id); if(ws){try{ws.close();}catch{}} ws=null; controllers.clear(); $('hostView').classList.add('hide'); $('setupView').classList.remove('hide'); };
 
-  listen('deep-link',(e)=>{ const c=parseLink(e.payload); if(c) connect(c); });
-  invoke('take_pending_url').then((url)=>{ if(url){ const c=parseLink(url); if(c) connect(c); } }).catch(()=>{});
+  // deep link from the website (carries server/room/password) → auto-host
+  function fromLink(url){
+    try{ const p=new URLSearchParams((url.split('?')[1]||''));
+      const server=decodeURIComponent(p.get('s')||''); const room=decodeURIComponent(p.get('r')||''); const password=decodeURIComponent(p.get('p')||'');
+      if(!server||!room) return;
+      cfg.server=server.replace(/\/+$/,''); cfg.id=room.replace(/\D/g,'')||room; cfg.pw=password;
+      LS.setItem('sh_server',cfg.server); LS.setItem('sh_id',cfg.id); LS.setItem('sh_pw',cfg.pw);
+      connect({ wsUrl: cfg.server.replace(/^http/,'ws')+'/ws', server:cfg.server, room:cfg.id, password:cfg.pw, name:'Remote PC' });
+    }catch{}
+  }
+  listen('deep-link',(e)=>fromLink(e.payload));
+  invoke('take_pending_url').then((url)=>{ if(url) fromLink(url); }).catch(()=>{});
 })();
 </script>
 </body>
