@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ShareHub Desktop</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0b0f19; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; }
+  header { padding: 16px 18px 10px; display: flex; align-items: center; gap: 8px; }
+  header .logo { font-size: 20px; }
+  header b { font-size: 15px; }
+  main { flex: 1; padding: 6px 18px 18px; overflow-y: auto; }
+  .card { background: #111827; border: 1px solid #1f2937; border-radius: 14px; padding: 16px; }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #64748b; }
+  .dot.ok { background: #34d399; box-shadow: 0 0 0 4px #34d39922; }
+  .dot.warn { background: #fbbf24; }
+  .dot.bad { background: #f87171; }
+  .dot.live { background: #f87171; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+  .muted { color: #94a3b8; font-size: 12px; margin-top: 4px; }
+  .row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  button { border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 600; font-size: 13px; cursor: pointer; }
+  .primary { background: #38bdf8; color: #06283b; }
+  .danger { background: #f43f5e; color: #fff; }
+  .ghost { background: #1f2937; color: #cbd5e1; }
+  label.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 12px; color: #cbd5e1; }
+  input[type=text] { width: 100%; background: #0b1220; border: 1px solid #334155; color: #e2e8f0;
+    border-radius: 10px; padding: 10px; font-size: 13px; margin-top: 8px; }
+  .controllers { margin-top: 12px; }
+  .controllers .who { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 0; }
+  details { margin-top: 14px; }
+  summary { cursor: pointer; color: #94a3b8; font-size: 12px; }
+  .warn-box { margin-top: 12px; background: #3f1d1d; border: 1px solid #7f1d1d; color: #fecaca;
+    border-radius: 10px; padding: 10px; font-size: 12px; }
+</style>
+</head>
+<body>
+  <header><span class="logo">⚡</span><b>ShareHub Desktop</b></header>
+  <main>
+    <div class="card">
+      <div class="status"><span class="dot" id="dot"></span><span id="statusText">Idle</span></div>
+      <div class="muted" id="roomLine">Waiting for a connection link…</div>
+
+      <div class="controllers" id="controllers"></div>
+
+      <label class="chk"><input type="checkbox" id="approve" /> Ask me before allowing each new controller</label>
+
+      <div class="row">
+        <button class="danger" id="disconnect" style="display:none">Disconnect &amp; cut control</button>
+      </div>
+
+      <div class="warn-box">⚠️ While connected, people you allow can control this computer's mouse &amp; keyboard. Close this window or click Disconnect to stop instantly.</div>
+
+      <details>
+        <summary>Connect manually (paste a sharehub:// link)</summary>
+        <input type="text" id="manual" placeholder="sharehub://join?s=...&r=...&p=...&t=..." />
+        <div class="row"><button class="ghost" id="manualGo">Connect</button></div>
+      </details>
+    </div>
+  </main>
+
+<script>
+(function () {
+  const T = window.__TAURI__ || null;
+  const invoke = T ? T.core.invoke : async (cmd, args) => { console.log('[stub invoke]', cmd, args); };
+  const listen = T ? T.event.listen : async () => (() => {});
+
+  const $ = (id) => document.getElementById(id);
+  const dot = $('dot'), statusText = $('statusText'), roomLine = $('roomLine');
+  const disconnectBtn = $('disconnect'), controllersEl = $('controllers'), approveBox = $('approve');
+
+  let ws = null, selfId = null, ownerId = null, token = null;
+  const controllers = new Map();   // peerId -> name
+  const pendingApproval = new Set();
+  let conf = null;                 // { wsUrl, room, password, name }
+
+  function setStatus(kind, text, sub) {
+    dot.className = 'dot ' + (kind || '');
+    statusText.textContent = text;
+    if (sub !== undefined) roomLine.textContent = sub;
+  }
+  function renderControllers() {
+    disconnectBtn.style.display = ws ? '' : 'none';
+    if (!controllers.size) { controllersEl.innerHTML = ''; return; }
+    controllersEl.innerHTML = '<div class="muted">Controlling this PC now:</div>' +
+      [...controllers.values()].map(n =>
+        `<div class="who"><span class="dot live"></span>${escapeHtml(n)}</div>`).join('');
+  }
+  function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+
+  function parseLink(url) {
+    try {
+      const q = url.split('?')[1] || '';
+      const p = new URLSearchParams(q);
+      const server = decodeURIComponent(p.get('s') || '');
+      const room = decodeURIComponent(p.get('r') || '');
+      const password = decodeURIComponent(p.get('p') || '');
+      const tk = p.get('t') || '';
+      const name = decodeURIComponent(p.get('n') || '') || 'This PC';
+      if (!server || !room) return null;
+      const wsUrl = server.replace(/^http/, 'ws').replace(/\/+$/, '') + '/ws';
+      return { wsUrl, room, password, name, token: tk };
+    } catch { return null; }
+  }
+
+  function connect(c) {
+    if (ws) { try { ws.close() } catch {} }
+    conf = c; token = c.token; controllers.clear(); ownerId = null; renderControllers();
+    setStatus('warn', 'Connecting…', `Room "${c.room}"`);
+    ws = new WebSocket(c.wsUrl);
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', key: c.room }));
+    ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data) } catch { return } onMsg(m); };
+    ws.onclose = () => { setStatus('bad', 'Disconnected', 'Connection closed'); disconnectBtn.style.display='none'; ws=null; };
+    ws.onerror = () => {};
+  }
+
+  const relay = (to, d) => ws && ws.readyState === 1 && ws.send(JSON.stringify({ type: 'relay', to, d }));
+
+  function onMsg(m) {
+    switch (m.type) {
+      case 'room-status':
+        if (!m.exists) { setStatus('bad', 'Room not found', 'Ask the host to open the room first'); return; }
+        ws.send(JSON.stringify({ type: 'join', password: conf.password, name: conf.name, role: 'agent' }));
+        break;
+      case 'error':
+        setStatus('bad', m.code === 'badpass' ? 'Wrong password' : (m.message || 'Error'), '');
+        break;
+      case 'joined':
+        selfId = m.selfId;
+        setStatus('ok', 'Connected — ready for control', `Room "${conf.room}" · ${conf.name}`);
+        disconnectBtn.style.display = '';
+        relay('*', { t: 'agent-ready', agentId: selfId, token });
+        break;
+      case 'peer-joined':
+        relay('*', { t: 'agent-ready', agentId: selfId, token }); // late joiners
+        break;
+      case 'peer-left':
+        if (controllers.delete(m.id)) renderControllers();
+        break;
+      case 'relay':
+        onRelay(m.from, m.d);
+        break;
+    }
+  }
+
+  async function allow(from, who) {
+    if (controllers.has(from)) return true;
+    if (approveBox.checked) {
+      if (pendingApproval.has(from)) return false;
+      pendingApproval.add(from);
+      const ok = confirm(`Allow "${who}" to control this PC?`);
+      pendingApproval.delete(from);
+      if (!ok) { relay(from, { t: 'rc-deny' }); return false; }
+    }
+    controllers.set(from, who); renderControllers();
+    relay(from, { t: 'rc-grant', agentId: selfId });
+    if (ownerId && ownerId !== from) relay(ownerId, { t: 'agent-controlled', by: who });
+    return true;
+  }
+
+  async function onRelay(from, d) {
+    if (!d || !d.t) return;
+    if (d.t === 'agent-owner') { ownerId = from; return; }
+    if (d.t === 'unpair') { if (ws) { try { ws.close() } catch {} } ws = null; controllers.clear(); renderControllers(); setStatus('', 'Unlinked by host', 'You can close this window'); return; }
+    if (d.t === 'rc-request') { await allow(from, d.name || 'A peer'); return; }
+    if (d.t === 'rc-stop') { if (controllers.delete(from)) { renderControllers(); if (ownerId) relay(ownerId, { t: 'agent-uncontrolled' }); } return; }
+    if (d.t.startsWith('rc-')) {
+      if (!controllers.has(from)) { if (!(await allow(from, 'A peer'))) return; }
+      invoke('inject', { ev: d }).catch(() => {});
+    }
+  }
+
+  disconnectBtn.onclick = () => { if (ws) { try { ws.close() } catch {} } ws = null; controllers.clear(); renderControllers(); setStatus('', 'Disconnected', 'You can close this window'); };
+  $('manualGo').onclick = () => { const c = parseLink($('manual').value.trim()); if (c) connect(c); else setStatus('bad', 'Invalid link', ''); };
+
+  // Receive deep links from the native layer.
+  listen('deep-link', (e) => { const c = parseLink(e.payload); if (c) connect(c); });
+  // Cold-start: fetch any launch URL the app opened with.
+  invoke('take_pending_url').then((url) => { if (url) { const c = parseLink(url); if (c) connect(c); } }).catch(() => {});
+})();
+</script>
+</body>
+</html>

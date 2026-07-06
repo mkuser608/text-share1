@@ -4,12 +4,9 @@ import { applyRemoteEvent, attachViewerControls, removeRemoteCursor, attachFullC
 
 /**
  * Calls (audio/video mesh) + screen share + remote control.
- *
- * Two kinds of remote control:
- *  - in-tab: forwarded as synthetic events inside the sharer's browser tab
- *    (works with no install, but only controls that tab).
- *  - full-PC: routed to a native agent the host runs; injects real OS input so
- *    a viewer can drive the whole desktop (IDE/terminal/etc) for pair debugging.
+ *  - in-tab: synthetic events inside the sharer's browser tab (no install).
+ *  - full-PC: routed to the ShareHub Desktop app (native OS input) so a viewer
+ *    can drive the whole desktop for pair programming / debugging.
  */
 export default function CallPane({ pm, peers, myName, selfId, agentApi }) {
   const [media, setMedia] = useState(null)
@@ -27,10 +24,10 @@ export default function CallPane({ pm, peers, myName, selfId, agentApi }) {
 
   // full-PC control state
   const [fullCtrl, setFullCtrl] = useState(null)   // agentId we're driving
-  const [linkOpen, setLinkOpen] = useState(false)
-  const [code, setCode] = useState('')
+  const [panel, setPanel] = useState(null)         // null | 'launching' | 'download'
+  const timerRef = useRef(null)
 
-  const { agents = {}, myAgentId, agentSeen, controlledBy } = agentApi || {}
+  const { agents = {}, myAgentId, controlledBy, os, downloads } = agentApi || {}
 
   useEffect(() => {
     const offs = [
@@ -52,8 +49,11 @@ export default function CallPane({ pm, peers, myName, selfId, agentApi }) {
         }
       }),
     ]
-    return () => { offs.forEach(o => o()); removeRemoteCursor() }
+    return () => { offs.forEach(o => o()); removeRemoteCursor(); clearTimeout(timerRef.current) }
   }, [])
+
+  // once the desktop app links, drop the launch/download panel
+  useEffect(() => { if (myAgentId) { setPanel(null); clearTimeout(timerRef.current) } }, [myAgentId])
 
   // ---- local media ----
   const startCall = async (withVideo) => {
@@ -101,7 +101,12 @@ export default function CallPane({ pm, peers, myName, selfId, agentApi }) {
   // ---- full-PC control ----
   const startFull = (agentId) => { agentApi.sendToAgent(agentId, { t: 'rc-request', name: myName }); setFullCtrl(agentId) }
   const stopFull = (agentId) => { agentApi.sendToAgent(agentId, { t: 'rc-stop' }); setFullCtrl(f => (f === agentId ? null : f)) }
-  const submitLink = (e) => { e.preventDefault(); if (code.trim()) { agentApi.link(code.trim()); setCode(''); setLinkOpen(false) } }
+  const enableFull = () => {
+    agentApi.enableFullControl()
+    setPanel('launching')
+    clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setPanel(p => (p === 'launching' ? 'download' : p)), 3500)
+  }
 
   // gather remote tiles
   const remoteTiles = []
@@ -120,9 +125,16 @@ export default function CallPane({ pm, peers, myName, selfId, agentApi }) {
     .map(p => ({ peerId: p.id, name: p.name, state: pm.getState(p.id) }))
   const anyTiles = remoteTiles.length + connectingTiles.length + (media ? 1 : 0) + (screen ? 1 : 0)
 
+  const DlButtons = () => (
+    <div className="flex gap-2 flex-wrap mt-2">
+      <a href={downloads.windows} className={`text-xs rounded-md px-3 py-1.5 font-semibold ${os === 'windows' ? 'bg-sky-500 text-white' : 'bg-slate-700 text-slate-200'}`}>⬇ Windows (.exe)</a>
+      <a href={downloads.mac} className={`text-xs rounded-md px-3 py-1.5 font-semibold ${os === 'mac' ? 'bg-sky-500 text-white' : 'bg-slate-700 text-slate-200'}`}>⬇ macOS (.dmg)</a>
+      <button onClick={enableFull} className="text-xs rounded-md px-3 py-1.5 bg-emerald-600 text-white font-semibold">I've installed it — open</button>
+    </div>
+  )
+
   return (
     <div className="h-full flex flex-col">
-      {/* incoming in-tab control request */}
       {reqFrom && (
         <div className="m-3 rounded-xl bg-indigo-500/15 border border-indigo-500/40 p-3 flex items-center gap-3">
           <div className="text-2xl">🖱️</div>
@@ -141,42 +153,38 @@ export default function CallPane({ pm, peers, myName, selfId, agentApi }) {
           <button onClick={revokeControl} className="ml-auto rounded-md border border-amber-500/50 hover:bg-amber-500/20 px-2 py-1">Stop</button>
         </div>
       )}
-      {/* someone controlling my whole PC via the agent */}
       {controlledBy && (
         <div className="mx-3 mt-3 rounded-lg bg-rose-500/15 border border-rose-500/50 px-3 py-2 text-xs flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse" />
-          <b>{controlledBy}</b> is controlling your <b>whole PC</b>. Quit the agent (Ctrl+C) to cut it instantly.
+          <b>{controlledBy}</b> is controlling your <b>whole PC</b>. Close the ShareHub Desktop app to cut it instantly.
         </div>
       )}
       {err && <div className="mx-3 mt-3 rounded-lg bg-rose-500/15 border border-rose-500/40 px-3 py-2 text-xs text-rose-300">{err}</div>}
 
-      {/* agent link status / prompt */}
+      {/* full-PC control (host side) */}
       <div className="mx-3 mt-3">
         {myAgentId ? (
           <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/40 px-3 py-2 text-xs flex items-center gap-2 flex-wrap">
             <span>🖥️</span><b>This PC is linked</b> — share your <b>entire screen</b> and others can take full control for debugging.
             <button onClick={agentApi.unlink} className="ml-auto rounded-md border border-emerald-500/40 hover:bg-emerald-500/20 px-2 py-1">Unlink</button>
           </div>
-        ) : agentSeen ? (
-          linkOpen ? (
-            <form onSubmit={submitLink} className="rounded-lg bg-slate-800/60 border border-slate-700 px-3 py-2 flex items-center gap-2">
-              <span className="text-xs text-slate-300">Enter the 6-digit code from the agent window:</span>
-              <input value={code} onChange={e => setCode(e.target.value)} autoFocus inputMode="numeric" maxLength={6}
-                className="w-24 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm outline-none focus:border-sky-500" placeholder="123456" />
-              <button className="text-xs rounded-md bg-sky-500 hover:bg-sky-400 text-white font-semibold px-3 py-1.5">Link</button>
-              <button type="button" onClick={() => setLinkOpen(false)} className="text-xs text-slate-400 px-1">cancel</button>
-              {agentApi.pairMsg && <span className="text-xs text-rose-300">{agentApi.pairMsg}</span>}
-            </form>
-          ) : (
-            <button onClick={() => setLinkOpen(true)}
-              className="w-full rounded-lg bg-indigo-500/15 border border-indigo-500/40 hover:bg-indigo-500/25 px-3 py-2 text-xs text-left">
-              🖥️ A control agent is running on this network — <b>Link this PC</b> to allow full-desktop control.
-            </button>
-          )
-        ) : (
-          <div className="rounded-lg bg-slate-800/40 border border-slate-700/60 px-3 py-2 text-[11px] text-slate-400">
-            💡 Want a viewer to control your whole PC (IDE, terminal) for debugging? Run the <b>ShareHub agent</b> on this machine (see agent/README), then link it here.
+        ) : panel === 'launching' ? (
+          <div className="rounded-lg bg-slate-800/60 border border-slate-700 px-3 py-2 text-xs flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full border-2 border-sky-400 border-t-transparent animate-spin" />
+            Opening ShareHub Desktop… approve the prompt from your browser/OS.
+            <button onClick={() => setPanel('download')} className="ml-auto text-slate-400 hover:text-slate-200">Didn't open?</button>
           </div>
+        ) : panel === 'download' ? (
+          <div className="rounded-lg bg-indigo-500/10 border border-indigo-500/40 px-3 py-2 text-xs">
+            <div><b>Install ShareHub Desktop</b> to allow full-PC control. It's a tiny one-time install.</div>
+            <DlButtons />
+            <button onClick={() => setPanel(null)} className="mt-2 text-[11px] text-slate-400 hover:text-slate-200">cancel</button>
+          </div>
+        ) : (
+          <button onClick={enableFull}
+            className="w-full rounded-lg bg-indigo-500/15 border border-indigo-500/40 hover:bg-indigo-500/25 px-3 py-2 text-xs text-left">
+            🖥️ <b>Enable full control of this PC</b> — let a teammate drive your desktop (IDE, terminal) for pair debugging.
+          </button>
         )}
       </div>
 
@@ -201,7 +209,6 @@ export default function CallPane({ pm, peers, myName, selfId, agentApi }) {
                 <Tile
                   key={t.key} stream={t.stream} label={t.name + (t.kind === 'screen' ? ' — screen' : '')}
                   isScreen={t.kind === 'screen'}
-                  // full-PC control if the host runs an agent; else in-tab control
                   fullState={agentId ? (fullCtrl === agentId ? 'active' : 'idle') : null}
                   onFullStart={() => startFull(agentId)}
                   onFullStop={() => stopFull(agentId)}
@@ -274,7 +281,6 @@ function Tile({ stream, label, mine, muted, isScreen, camOff, micOff,
     if (videoRef.current && videoRef.current.srcObject !== stream) videoRef.current.srcObject = stream
   }, [stream])
 
-  // in-tab viewer control capture
   useEffect(() => {
     if (controlState === 'active' && videoRef.current && sendControl) {
       detachRef.current = attachViewerControls(videoRef.current, sendControl)
@@ -283,7 +289,6 @@ function Tile({ stream, label, mine, muted, isScreen, camOff, micOff,
     return () => { detachRef.current?.(); detachRef.current = null }
   }, [controlState])
 
-  // full-PC control capture (to native agent)
   useEffect(() => {
     if (fullState === 'active' && videoRef.current && sendFull) {
       detachRef.current = attachFullControl(videoRef.current, sendFull)
@@ -310,7 +315,6 @@ function Tile({ stream, label, mine, muted, isScreen, camOff, micOff,
         <span className="truncate max-w-[40vw]">{label}</span>
       </div>
 
-      {/* full-PC control buttons */}
       {fullState && (
         <div className="absolute top-1.5 right-1.5">
           {fullState === 'idle'
@@ -318,7 +322,6 @@ function Tile({ stream, label, mine, muted, isScreen, camOff, micOff,
             : <button onClick={onFullStop} className="text-[11px] rounded-md bg-emerald-500/90 hover:bg-emerald-400 text-white font-semibold px-2 py-1">● Controlling PC — stop</button>}
         </div>
       )}
-      {/* in-tab control buttons */}
       {controlState && (
         <div className="absolute top-1.5 right-1.5">
           {controlState === 'idle' && <button onClick={onRequestControl} className="text-[11px] rounded-md bg-indigo-500/90 hover:bg-indigo-400 text-white font-semibold px-2 py-1">Request control</button>}
@@ -327,9 +330,7 @@ function Tile({ stream, label, mine, muted, isScreen, camOff, micOff,
         </div>
       )}
       {active && (
-        <div className="absolute top-1.5 left-1.5 text-[10px] bg-emerald-500/20 text-emerald-300 rounded px-1.5 py-0.5">
-          click &amp; type on the video
-        </div>
+        <div className="absolute top-1.5 left-1.5 text-[10px] bg-emerald-500/20 text-emerald-300 rounded px-1.5 py-0.5">click &amp; type on the video</div>
       )}
     </div>
   )

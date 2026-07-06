@@ -3,3 +3,6 @@ dist/
 .DS_Store
 *.log
 .fuse_hidden*
+desktop/installers/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/

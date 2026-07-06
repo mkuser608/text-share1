@@ -96,18 +96,20 @@ src/components/         Landing, Room (gate), RoomShell, EditorPane, FilesPane, 
 
 ## Full-PC control for pair debugging 🖥️
 
-By default, remote control only reaches the shared **browser tab** (a hard web
-security limit). To let a teammate control your **whole desktop** — IDE,
-terminal, any app — the host runs the **ShareHub control agent** (a small native
-helper in [`agent/`](agent/README.md)):
+Browser remote-control only reaches the shared **tab**. For true full-desktop
+control (IDE, terminal, any app), the host installs **ShareHub Desktop** — a
+tiny native app (Tauri, ~8–12 MB) that injects real OS input. It launches
+straight from the browser, AnyDesk-style:
 
-1. Host: `cd agent && npm install && node index.js` → it prints a 6-digit code.
-2. Host: in the room's **Call** tab, click **Link this PC**, enter the code, and
-   **share your entire screen**.
-3. Anyone in the room then sees **"🖥️ Take full control"** on the host's screen
-   tile and can drive the host's real mouse/keyboard.
+1. Host: in a room's **Call** tab → **Enable full control of this PC**.
+2. First time only, the browser offers a one-click **download** (Windows/macOS);
+   after installing, it opens automatically via a `sharehub://` link.
+3. Host **shares their entire screen**; any viewer clicks **🖥️ Take full
+   control** on that screen tile and drives the host's real mouse/keyboard.
 
-Security: control needs the one-time code, the host sees a live "controlling your
-PC" banner, and quitting the agent (Ctrl+C) cuts control instantly. Works on
-Windows/macOS/Linux desktops; mobile is not supported (OS sandboxing). See
-[`agent/README.md`](agent/README.md) for details and per-OS permissions.
+Closing the app cuts control instantly. Build it locally and wire up the
+download buttons per [`desktop/README.md`](desktop/README.md). The server serves
+installers from `desktop/installers/` via `/download/windows` and
+`/download/mac`.
+
+> The older Node `agent/` is superseded by ShareHub Desktop and can be ignored.

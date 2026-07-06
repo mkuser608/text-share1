@@ -1,4 +1,5 @@
 import http from 'http'
+import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import express from 'express'
@@ -9,11 +10,47 @@ import bcrypt from 'bcryptjs'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 3000
 const DIST = path.join(__dirname, '..', 'dist')
+// Where locally-built desktop installers are dropped (.exe/.msi/.dmg).
+const INSTALLERS = process.env.DESKTOP_INSTALLERS_DIR || path.join(__dirname, '..', 'desktop', 'installers')
 
 // ---------- HTTP ----------
 const app = express()
 app.use(express.static(DIST))
 app.get('/healthz', (_req, res) => res.json({ ok: true }))
+
+// ---- ShareHub Desktop downloads ----
+function findInstaller(exts) {
+  try {
+    const files = fs.readdirSync(INSTALLERS).filter(f => exts.some(e => f.toLowerCase().endsWith(e)))
+    if (!files.length) return null
+    files.sort((a, b) => fs.statSync(path.join(INSTALLERS, b)).mtimeMs - fs.statSync(path.join(INSTALLERS, a)).mtimeMs)
+    return path.join(INSTALLERS, files[0])
+  } catch { return null }
+}
+const notBuilt = (os) => `ShareHub Desktop for ${os} hasn't been built yet.\nBuild it locally (see desktop/README.md) and drop the installer in ${INSTALLERS}`
+app.get('/download/windows', (_req, res) => {
+  const f = findInstaller(['.exe', '.msi']); if (!f) return res.status(404).type('text').send(notBuilt('Windows'))
+  res.download(f)
+})
+app.get('/download/mac', (_req, res) => {
+  const f = findInstaller(['.dmg']); if (!f) return res.status(404).type('text').send(notBuilt('macOS'))
+  res.download(f)
+})
+app.get('/download', (_req, res) => {
+  const hasWin = !!findInstaller(['.exe', '.msi'])
+  const hasMac = !!findInstaller(['.dmg'])
+  res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ShareHub Desktop</title>
+<style>body{margin:0;font-family:system-ui,sans-serif;background:#0b0f19;color:#e2e8f0;display:grid;place-items:center;height:100vh}
+.card{background:#111827;border:1px solid #1f2937;border-radius:16px;padding:32px;max-width:420px;text-align:center}
+a.btn{display:inline-block;margin:8px 6px;padding:12px 18px;border-radius:10px;background:#38bdf8;color:#06283b;font-weight:700;text-decoration:none}
+a.off{background:#334155;color:#94a3b8;pointer-events:none}small{color:#94a3b8}</style></head>
+<body><div class="card"><div style="font-size:40px">⚡</div><h2>ShareHub Desktop</h2>
+<p style="color:#94a3b8">Install once to allow full-PC control for pair debugging.</p>
+<a class="btn ${hasWin ? '' : 'off'}" href="/download/windows">⬇ Windows</a>
+<a class="btn ${hasMac ? '' : 'off'}" href="/download/mac">⬇ macOS</a>
+<p><small>After installing, return to your room and click “Enable full control”.</small></p></div></body></html>`)
+})
+
 // SPA fallback: every room path serves the app.
 // Middleware form (no path pattern) works on both Express 4 and 5.
 app.use((req, res, next) => {
@@ -99,7 +136,7 @@ wss.on('connection', (ws) => {
         }
 
         // Generic app relay: targeted (msg.to = peerId) or broadcast (msg.to = '*').
-        // Used for full-PC remote-control events between browsers and native agents.
+        // Used for full-PC remote-control events between browsers and the desktop app.
         case 'relay': {
           const r = room(); if (!authed || !r) return
           const payload = { type: 'relay', from: selfId, role, d: msg.d }

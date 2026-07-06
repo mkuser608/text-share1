@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import * as Y from 'yjs'
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness'
 import { b64ToU8, u8ToB64, colorFor } from '../lib/util'
 import { PeerManager } from '../lib/peers'
 import { FileShare } from '../lib/fileshare'
+import { buildDeepLink, launchDesktop, downloadUrls, detectOS, randomToken } from '../lib/desktop'
 import EditorPane from './EditorPane'
 import FilesPane from './FilesPane'
 import CallPane from './CallPane'
@@ -28,12 +29,12 @@ export default function RoomShell({ conn, joined, roomKey }) {
   const [peers, setPeers] = useState(() => joined.peers.filter(p => p.role !== 'agent'))
   const [files, setFiles] = useState(joined.files)
   const [copied, setCopied] = useState(false)
-  // agent / full-PC control state
+  // agent / full-PC control
   const [agents, setAgents] = useState({})       // ownerBrowserId -> agentId
-  const [agentSeen, setAgentSeen] = useState(false)
   const [myAgentId, setMyAgentId] = useState(null)
-  const [pairMsg, setPairMsg] = useState('')
   const [controlledBy, setControlledBy] = useState(null)
+  const pendingToken = useRef(null)
+  const myAgentRef = useRef(null); myAgentRef.current = myAgentId
   const myName = conn.creds?.name || 'Me'
 
   useEffect(() => {
@@ -57,9 +58,11 @@ export default function RoomShell({ conn, joined, roomKey }) {
       conn.on('yupdate', (m) => Y.applyUpdate(ydoc, b64ToU8(m.u), 'remote')),
       conn.on('awareness', (m) => applyAwarenessUpdate(awareness, b64ToU8(m.d), 'remote')),
       conn.on('peer-joined', (m) => {
-        if (m.role === 'agent') { setAgentSeen(true); return } // agents aren't WebRTC peers
+        if (m.role === 'agent') return
         pm.addPeer(m.id, m.name)
         setPeers(ps => [...ps.filter(p => p.id !== m.id), { id: m.id, name: m.name }])
+        // help late-joining viewers discover my linked PC
+        if (myAgentRef.current) conn.send({ type: 'relay', to: '*', d: { t: 'agent-bind', agentId: myAgentRef.current, ownerId: conn.selfId } })
       }),
       conn.on('peer-left', (m) => {
         pm.removePeer(m.id)
@@ -72,10 +75,14 @@ export default function RoomShell({ conn, joined, roomKey }) {
       conn.on('relay', (m) => {
         const d = m.d || {}
         switch (d.t) {
-          case 'agent-here': setAgentSeen(true); if (d.paired && d.ownerId) setAgents(a => ({ ...a, [d.ownerId]: d.agentId })); break
-          case 'agent-ready': setAgents(a => ({ ...a, [d.ownerId]: d.agentId })); break
-          case 'agent-paired': setMyAgentId(d.agentId); setPairMsg(''); break
-          case 'pair-bad': setPairMsg('Wrong code — check the agent window and try again.'); break
+          case 'agent-ready':
+            if (d.token && d.token === pendingToken.current) {
+              setMyAgentId(d.agentId); pendingToken.current = null
+              conn.send({ type: 'relay', to: d.agentId, d: { t: 'agent-owner', ownerId: conn.selfId } })
+              conn.send({ type: 'relay', to: '*', d: { t: 'agent-bind', agentId: d.agentId, ownerId: conn.selfId } })
+            }
+            break
+          case 'agent-bind': setAgents(a => ({ ...a, [d.ownerId]: d.agentId })); break
           case 'agent-controlled': setControlledBy(d.by || 'Someone'); break
           case 'agent-uncontrolled': setControlledBy(null); break
         }
@@ -98,8 +105,13 @@ export default function RoomShell({ conn, joined, roomKey }) {
   }
 
   const agentApi = {
-    agents, agentSeen, myAgentId, pairMsg, controlledBy,
-    link: (code) => { setPairMsg('Linking…'); conn.send({ type: 'relay', to: '*', d: { t: 'pair', code: String(code) } }) },
+    agents, myAgentId, controlledBy, os: detectOS(), downloads: downloadUrls(),
+    enableFullControl: () => {
+      const token = randomToken(); pendingToken.current = token
+      const link = buildDeepLink({ server: location.origin, room: roomKey, password: conn.creds?.password || '', token, name: myName })
+      launchDesktop(link)
+      return { link, token }
+    },
     unlink: () => { if (myAgentId) conn.send({ type: 'relay', to: myAgentId, d: { t: 'unpair' } }); setMyAgentId(null) },
     sendToAgent: (agentId, d) => conn.send({ type: 'relay', to: agentId, d }),
   }
@@ -112,10 +124,8 @@ export default function RoomShell({ conn, joined, roomKey }) {
       <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-slate-800 bg-slate-900/60 backdrop-blur shrink-0">
         <a href="/" className="text-lg font-extrabold bg-gradient-to-r from-sky-400 to-fuchsia-400 bg-clip-text text-transparent shrink-0">⚡</a>
         <div className="font-semibold truncate">{roomKey}</div>
-        <button
-          onClick={copyLink}
-          className="text-xs rounded-md border border-slate-700 hover:border-sky-500 text-slate-300 px-2 py-1 transition shrink-0"
-        >
+        <button onClick={copyLink}
+          className="text-xs rounded-md border border-slate-700 hover:border-sky-500 text-slate-300 px-2 py-1 transition shrink-0">
           {copied ? '✓ copied' : 'copy link'}
         </button>
 
@@ -145,7 +155,7 @@ export default function RoomShell({ conn, joined, roomKey }) {
         ))}
       </nav>
 
-      {/* panes (kept mounted so calls/transfers survive tab switches) */}
+      {/* panes */}
       <main className="flex-1 min-h-0 relative">
         <div className={tab === 'editor' ? 'h-full' : 'hidden'}><EditorPane ydoc={ydoc} awareness={awareness} /></div>
         <div className={tab === 'files' ? 'h-full' : 'hidden'}><FilesPane files={files} fs={fs} selfId={conn.selfId} peerCount={peers.length} /></div>
