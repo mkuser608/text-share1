@@ -156,3 +156,66 @@ export function attachViewerControls(video, send) {
     video.removeEventListener('keydown', onKey)
   }
 }
+
+/**
+ * Full-PC control capture (viewer side). Like attachViewerControls, but emits
+ * events destined for a NATIVE AGENT that injects them into the host's OS.
+ * Coordinates are normalized 0..1 against the shared *entire screen* video.
+ * `send` delivers each event to the agent (over the WebSocket relay).
+ * Returns detach().
+ */
+export function attachFullControl(video, send) {
+  const norm = (e) => {
+    const r = video.getBoundingClientRect()
+    const vw = video.videoWidth || r.width
+    const vh = video.videoHeight || r.height
+    const va = vw / vh, ea = r.width / r.height
+    let w, h, ox, oy
+    if (ea > va) { h = r.height; w = h * va; ox = (r.width - w) / 2; oy = 0 }
+    else { w = r.width; h = w / va; ox = 0; oy = (r.height - h) / 2 }
+    const x = (e.clientX - r.left - ox) / w
+    const y = (e.clientY - r.top - oy) / h
+    if (x < 0 || x > 1 || y < 0 || y > 1) return null
+    return { x: +x.toFixed(4), y: +y.toFixed(4) }
+  }
+
+  let last = 0
+  const onMove = (e) => {
+    const now = performance.now()
+    if (now - last < 25) return
+    last = now
+    const p = norm(e); if (p) send({ t: 'rc-move', ...p })
+  }
+  const onDown = (e) => { const p = norm(e); if (p) send({ t: 'rc-down', ...p, button: e.button }); video.focus(); e.preventDefault() }
+  const onUp = (e) => { send({ t: 'rc-up', button: e.button }); e.preventDefault() }
+  const onDbl = (e) => { const p = norm(e); if (p) send({ t: 'rc-dblclick', ...p, button: e.button }); e.preventDefault() }
+  const onCtx = (e) => e.preventDefault()
+  const onWheel = (e) => { send({ t: 'rc-wheel', dy: e.deltaY }); e.preventDefault() }
+  const onKey = (e) => {
+    const printable = e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey
+    if (printable) send({ t: 'rc-text', text: e.key })
+    else send({ t: 'rc-combo', key: e.key, ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey })
+    e.preventDefault()
+  }
+
+  video.tabIndex = 0
+  video.style.cursor = 'crosshair'
+  video.addEventListener('pointermove', onMove)
+  video.addEventListener('pointerdown', onDown)
+  video.addEventListener('pointerup', onUp)
+  video.addEventListener('dblclick', onDbl)
+  video.addEventListener('contextmenu', onCtx)
+  video.addEventListener('wheel', onWheel, { passive: false })
+  video.addEventListener('keydown', onKey)
+
+  return () => {
+    video.style.cursor = ''
+    video.removeEventListener('pointermove', onMove)
+    video.removeEventListener('pointerdown', onDown)
+    video.removeEventListener('pointerup', onUp)
+    video.removeEventListener('dblclick', onDbl)
+    video.removeEventListener('contextmenu', onCtx)
+    video.removeEventListener('wheel', onWheel)
+    video.removeEventListener('keydown', onKey)
+  }
+}

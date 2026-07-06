@@ -93,3 +93,21 @@ src/lib/remotecontrol.js remote pointer/keyboard capture + replay
 src/lib/util.js         helpers (base64, sizes, colors)
 src/components/         Landing, Room (gate), RoomShell, EditorPane, FilesPane, CallPane
 ```
+
+## Full-PC control for pair debugging 🖥️
+
+By default, remote control only reaches the shared **browser tab** (a hard web
+security limit). To let a teammate control your **whole desktop** — IDE,
+terminal, any app — the host runs the **ShareHub control agent** (a small native
+helper in [`agent/`](agent/README.md)):
+
+1. Host: `cd agent && npm install && node index.js` → it prints a 6-digit code.
+2. Host: in the room's **Call** tab, click **Link this PC**, enter the code, and
+   **share your entire screen**.
+3. Anyone in the room then sees **"🖥️ Take full control"** on the host's screen
+   tile and can drive the host's real mouse/keyboard.
+
+Security: control needs the one-time code, the host sees a live "controlling your
+PC" banner, and quitting the agent (Ctrl+C) cuts control instantly. Works on
+Windows/macOS/Linux desktops; mobile is not supported (OS sandboxing). See
+[`agent/README.md`](agent/README.md) for details and per-OS permissions.

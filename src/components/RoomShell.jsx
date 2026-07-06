@@ -25,9 +25,15 @@ export default function RoomShell({ conn, joined, roomKey }) {
   const { ydoc, awareness, pm, fs } = ctx
 
   const [tab, setTab] = useState('editor')
-  const [peers, setPeers] = useState(joined.peers)
+  const [peers, setPeers] = useState(() => joined.peers.filter(p => p.role !== 'agent'))
   const [files, setFiles] = useState(joined.files)
   const [copied, setCopied] = useState(false)
+  // agent / full-PC control state
+  const [agents, setAgents] = useState({})       // ownerBrowserId -> agentId
+  const [agentSeen, setAgentSeen] = useState(false)
+  const [myAgentId, setMyAgentId] = useState(null)
+  const [pairMsg, setPairMsg] = useState('')
+  const [controlledBy, setControlledBy] = useState(null)
   const myName = conn.creds?.name || 'Me'
 
   useEffect(() => {
@@ -45,15 +51,35 @@ export default function RoomShell({ conn, joined, roomKey }) {
     }
     awareness.on('update', onAwareness)
 
-    joined.peers.forEach(p => pm.addPeer(p.id, p.name))
+    joined.peers.forEach(p => { if (p.role !== 'agent') pm.addPeer(p.id, p.name) })
 
     const offs = [
       conn.on('yupdate', (m) => Y.applyUpdate(ydoc, b64ToU8(m.u), 'remote')),
       conn.on('awareness', (m) => applyAwarenessUpdate(awareness, b64ToU8(m.d), 'remote')),
-      conn.on('peer-joined', (m) => { pm.addPeer(m.id, m.name); setPeers(ps => [...ps.filter(p => p.id !== m.id), { id: m.id, name: m.name }]) }),
-      conn.on('peer-left', (m) => { pm.removePeer(m.id); setPeers(ps => ps.filter(p => p.id !== m.id)) }),
+      conn.on('peer-joined', (m) => {
+        if (m.role === 'agent') { setAgentSeen(true); return } // agents aren't WebRTC peers
+        pm.addPeer(m.id, m.name)
+        setPeers(ps => [...ps.filter(p => p.id !== m.id), { id: m.id, name: m.name }])
+      }),
+      conn.on('peer-left', (m) => {
+        pm.removePeer(m.id)
+        setPeers(ps => ps.filter(p => p.id !== m.id))
+        setAgents(a => { const n = { ...a }; for (const k of Object.keys(n)) if (n[k] === m.id || k === m.id) delete n[k]; return n })
+        setMyAgentId(id => (id === m.id ? null : id))
+      }),
       conn.on('file-offer', (m) => setFiles(f => [...f.filter(x => x.id !== m.file.id), m.file])),
       conn.on('file-revoke', (m) => setFiles(f => f.filter(x => x.id !== m.id))),
+      conn.on('relay', (m) => {
+        const d = m.d || {}
+        switch (d.t) {
+          case 'agent-here': setAgentSeen(true); if (d.paired && d.ownerId) setAgents(a => ({ ...a, [d.ownerId]: d.agentId })); break
+          case 'agent-ready': setAgents(a => ({ ...a, [d.ownerId]: d.agentId })); break
+          case 'agent-paired': setMyAgentId(d.agentId); setPairMsg(''); break
+          case 'pair-bad': setPairMsg('Wrong code — check the agent window and try again.'); break
+          case 'agent-controlled': setControlledBy(d.by || 'Someone'); break
+          case 'agent-uncontrolled': setControlledBy(null); break
+        }
+      }),
     ]
 
     return () => {
@@ -69,6 +95,13 @@ export default function RoomShell({ conn, joined, roomKey }) {
     try { await navigator.clipboard.writeText(location.href) } catch { /* noop */ }
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+  }
+
+  const agentApi = {
+    agents, agentSeen, myAgentId, pairMsg, controlledBy,
+    link: (code) => { setPairMsg('Linking…'); conn.send({ type: 'relay', to: '*', d: { t: 'pair', code: String(code) } }) },
+    unlink: () => { if (myAgentId) conn.send({ type: 'relay', to: myAgentId, d: { t: 'unpair' } }); setMyAgentId(null) },
+    sendToAgent: (agentId, d) => conn.send({ type: 'relay', to: agentId, d }),
   }
 
   const everyone = [{ id: conn.selfId, name: myName + ' (you)' }, ...peers]
@@ -116,7 +149,7 @@ export default function RoomShell({ conn, joined, roomKey }) {
       <main className="flex-1 min-h-0 relative">
         <div className={tab === 'editor' ? 'h-full' : 'hidden'}><EditorPane ydoc={ydoc} awareness={awareness} /></div>
         <div className={tab === 'files' ? 'h-full' : 'hidden'}><FilesPane files={files} fs={fs} selfId={conn.selfId} peerCount={peers.length} /></div>
-        <div className={tab === 'call' ? 'h-full' : 'hidden'}><CallPane pm={pm} peers={peers} myName={myName} /></div>
+        <div className={tab === 'call' ? 'h-full' : 'hidden'}><CallPane pm={pm} peers={peers} myName={myName} selfId={conn.selfId} agentApi={agentApi} /></div>
       </main>
 
       {/* mobile bottom nav */}

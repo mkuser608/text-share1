@@ -42,6 +42,7 @@ wss.on('connection', (ws) => {
   let roomKey = null
   let selfId = null
   let authed = false
+  let role = 'human'
 
   const room = () => rooms.get(roomKey)
 
@@ -63,7 +64,7 @@ wss.on('connection', (ws) => {
           if (!msg.password || msg.password.length < 1) return send(ws, { type: 'error', message: 'Password required' })
           const passwordHash = await bcrypt.hash(String(msg.password), 10)
           rooms.set(roomKey, { passwordHash, ydoc: new Y.Doc(), clients: new Map(), files: new Map() })
-          joinRoom(msg.name)
+          joinRoom(msg.name, msg.role)
           break
         }
 
@@ -72,7 +73,7 @@ wss.on('connection', (ws) => {
           if (!r) return send(ws, { type: 'error', code: 'gone', message: 'Room does not exist' })
           const ok = await bcrypt.compare(String(msg.password || ''), r.passwordHash)
           if (!ok) return send(ws, { type: 'error', code: 'badpass', message: 'Wrong password' })
-          joinRoom(msg.name)
+          joinRoom(msg.name, msg.role)
           break
         }
 
@@ -89,6 +90,7 @@ wss.on('connection', (ws) => {
           break
         }
 
+        // WebRTC signaling relay (targeted)
         case 'signal': {
           const r = room(); if (!authed || !r) return
           const target = r.clients.get(msg.to)
@@ -96,6 +98,17 @@ wss.on('connection', (ws) => {
           break
         }
 
+        // Generic app relay: targeted (msg.to = peerId) or broadcast (msg.to = '*').
+        // Used for full-PC remote-control events between browsers and native agents.
+        case 'relay': {
+          const r = room(); if (!authed || !r) return
+          const payload = { type: 'relay', from: selfId, role, d: msg.d }
+          if (msg.to == null || msg.to === '*') broadcast(r, payload, selfId)
+          else { const t = r.clients.get(msg.to); if (t) send(t.ws, payload) }
+          break
+        }
+
+        // P2P file metadata (data flows peer-to-peer, never through here)
         case 'file-offer': {
           const r = room(); if (!authed || !r) return
           const f = {
@@ -125,20 +138,22 @@ wss.on('connection', (ws) => {
     }
   })
 
-  function joinRoom(name) {
+  function joinRoom(name, wantRole) {
     const r = room()
     selfId = genId()
     authed = true
+    role = wantRole === 'agent' ? 'agent' : 'human'
     const cleanName = String(name || 'Guest').slice(0, 32)
-    r.clients.set(selfId, { ws, name: cleanName })
+    r.clients.set(selfId, { ws, name: cleanName, role })
     send(ws, {
       type: 'joined',
       selfId,
-      peers: [...r.clients.entries()].filter(([id]) => id !== selfId).map(([id, c]) => ({ id, name: c.name })),
+      role,
+      peers: [...r.clients.entries()].filter(([id]) => id !== selfId).map(([id, c]) => ({ id, name: c.name, role: c.role })),
       files: [...r.files.values()],
       doc: Buffer.from(Y.encodeStateAsUpdate(r.ydoc)).toString('base64')
     })
-    broadcast(r, { type: 'peer-joined', id: selfId, name: cleanName }, selfId)
+    broadcast(r, { type: 'peer-joined', id: selfId, name: cleanName, role }, selfId)
   }
 
   ws.on('close', () => {
