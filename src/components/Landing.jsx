@@ -64,10 +64,10 @@ export default function Landing() {
             <div className="font-semibold">Connect to a remote computer</div>
           </div>
           <p className="text-sm text-slate-400 mt-1">
-            Enter a Remote ID + password (from the ShareHub Desktop app running on that PC) to view and control it.
+            Enter a Machine ID + password (shown in the ShareHub Desktop app on that PC) to view and control it.
           </p>
           <form onSubmit={connectRemote} className="mt-3 grid grid-cols-1 sm:grid-cols-[1.2fr_1fr_auto] gap-2">
-            <input value={rid} onChange={(e) => setRid(e.target.value)} placeholder="Remote ID (e.g. 123 456 789)"
+            <input value={rid} onChange={(e) => setRid(e.target.value)} placeholder="Machine ID (e.g. 123 456 789)"
               className="rounded-lg bg-slate-900/70 border border-slate-700 px-3.5 py-3 outline-none focus:border-sky-500 placeholder:text-slate-500" />
             <input type="password" value={rpw} onChange={(e) => setRpw(e.target.value)} placeholder="Password"
               className="rounded-lg bg-slate-900/70 border border-slate-700 px-3.5 py-3 outline-none focus:border-sky-500 placeholder:text-slate-500" />
