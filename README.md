@@ -111,5 +111,3 @@ Closing the app cuts control instantly. Build it locally and wire up the
 download buttons per [`desktop/README.md`](desktop/README.md). The server serves
 installers from `desktop/installers/` via `/download/windows` and
 `/download/mac`.
-
-> The older Node `agent/` is superseded by ShareHub Desktop and can be ignored.
