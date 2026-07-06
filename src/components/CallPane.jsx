@@ -116,7 +116,11 @@ export default function CallPane({ pm, peers, myName }) {
   }
 
   const inCall = !!media || !!screen
-  const anyTiles = remoteTiles.length + (media ? 1 : 0) + (screen ? 1 : 0)
+  // peers we're connected to but who haven't sent media yet — show a status placeholder
+  const shown = new Set(remoteTiles.map(t => t.peerId))
+  const connectingTiles = (inCall ? peers : []).filter(p => !shown.has(p.id))
+    .map(p => ({ peerId: p.id, name: p.name, state: pm.getState(p.id) }))
+  const anyTiles = remoteTiles.length + connectingTiles.length + (media ? 1 : 0) + (screen ? 1 : 0)
 
   return (
     <div className="h-full flex flex-col">
@@ -169,6 +173,21 @@ export default function CallPane({ pm, peers, myName }) {
                 onStopControl={() => stopControlling(t.peerId)}
                 sendControl={(evt) => pm.sendCtl(t.peerId, evt)}
               />
+            ))}
+            {connectingTiles.map(c => (
+              <div key={'c:' + c.peerId}
+                className="relative rounded-xl overflow-hidden bg-slate-900 border border-slate-700/60 aspect-video grid place-items-center">
+                <div className="text-center px-3">
+                  <div className="w-12 h-12 mx-auto rounded-full grid place-items-center text-lg font-bold text-slate-900 mb-2"
+                    style={{ background: colorFor(c.name) }}>{c.name.trim()[0]?.toUpperCase()}</div>
+                  <div className="text-sm font-medium">{c.name}</div>
+                  <div className={`text-xs mt-0.5 ${c.state === 'failed' ? 'text-rose-400' : 'text-slate-400'}`}>
+                    {c.state === 'connected' ? 'connected — camera/mic off'
+                      : c.state === 'failed' ? 'connection failed — retrying'
+                      : 'connecting…'}
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
         )}
