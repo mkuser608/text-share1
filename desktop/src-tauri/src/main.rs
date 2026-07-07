@@ -150,6 +150,25 @@ fn open_url(url: String) {
     { let _ = std::process::Command::new("xdg-open").arg(&url).spawn(); }
 }
 
+/// Capture the primary screen as a base64 JPEG (downscaled). Native — no picker.
+#[tauri::command]
+fn capture_frame() -> Result<String, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let monitors = xcap::Monitor::all().map_err(|e| e.to_string())?;
+    let monitor = monitors.into_iter().next().ok_or_else(|| "no monitor".to_string())?;
+    let cap = monitor.capture_image().map_err(|e| e.to_string())?;
+    let (w, h) = (cap.width(), cap.height());
+    let raw: Vec<u8> = cap.into_raw();
+    let buf = image::RgbaImage::from_raw(w, h, raw).ok_or_else(|| "bad frame".to_string())?;
+    let dynimg = image::DynamicImage::ImageRgba8(buf);
+    let target = 1280u32;
+    let scaled = if w > target { dynimg.resize(target, u32::MAX / 2, image::imageops::FilterType::Triangle) } else { dynimg };
+    let rgb = image::DynamicImage::ImageRgb8(scaled.to_rgb8());
+    let mut cur = std::io::Cursor::new(Vec::<u8>::new());
+    rgb.write_to(&mut cur, image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;
+    Ok(STANDARD.encode(cur.get_ref()))
+}
+
 fn deliver(app: &tauri::AppHandle, url: &str) {
     if !url.starts_with("sharehub://") {
         return;
@@ -163,13 +182,6 @@ fn deliver(app: &tauri::AppHandle, url: &str) {
 }
 
 fn main() {
-    // Auto-pick the whole screen for getDisplayMedia (no picker) and auto-grant capture,
-    // so the app can go online and share without extra prompts.
-    std::env::set_var(
-        "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-        "--auto-select-desktop-capture-source=Screen --enable-usermedia-screen-capturing --auto-accept-camera-and-microphone-capture",
-    );
-
     let enigo = Enigo::new(&Settings::default()).expect("failed to init input backend");
 
     tauri::Builder::default()
@@ -189,7 +201,7 @@ fn main() {
             enigo: Mutex::new(enigo),
             pending: Mutex::new(None),
         })
-        .invoke_handler(tauri::generate_handler![inject, take_pending_url, open_url])
+        .invoke_handler(tauri::generate_handler![inject, take_pending_url, open_url, capture_frame])
         .setup(|app| {
             use tauri_plugin_deep_link::DeepLinkExt;
 

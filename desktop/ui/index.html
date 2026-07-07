@@ -24,7 +24,7 @@
     <div class="box">
       <div class="ring" id="ring">💤</div>
       <div class="state" id="state">Offline</div>
-      <div class="muted" id="hint">Click below and pick your screen. This computer becomes reachable from the ShareHub website. Your ID &amp; password are shown on the website only.</div>
+      <div class="muted" id="hint">This computer becomes reachable from the ShareHub website. Your ID &amp; password are shown on the website only. No prompts — it shares automatically.</div>
       <button class="primary" id="toggle">Go online</button>
       <div class="err" id="err"></div>
     </div>
@@ -53,8 +53,23 @@
 
   let screenStream=null, online=false, shared=false;
   const inject=(d)=> invoke('inject',{ev:d}).catch(()=>{});
-  async function startShare(){ screenStream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:15},audio:false}); screenStream.getVideoTracks()[0].addEventListener('ended',()=>{ shared=false; render(); }); for(const s of sessions()) s.attachScreen(); }
-  function stopShare(){ if(!screenStream) return; for(const s of sessions()) s.detachScreen(); screenStream.getTracks().forEach(t=>t.stop()); screenStream=null; }
+  let capTimer=null;
+  async function startShare(){
+    if(screenStream) return;
+    const canvas=document.createElement('canvas'), ctx=canvas.getContext('2d'), img=new Image(); let pending=false;
+    const grab=async()=>{ if(pending) return; pending=true;
+      try{ const b64=await invoke('capture_frame'); if(b64){
+        await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src='data:image/jpeg;base64,'+b64; });
+        if(canvas.width!==img.naturalWidth||canvas.height!==img.naturalHeight){ canvas.width=img.naturalWidth||1280; canvas.height=img.naturalHeight||720; }
+        ctx.drawImage(img,0,0);
+      } }catch(e){} pending=false; };
+    await grab();
+    if(!canvas.width){ canvas.width=1280; canvas.height=720; }
+    screenStream = canvas.captureStream(12);
+    capTimer = setInterval(grab, 90);
+    for(const s of sessions()) s.attachScreen();
+  }
+  function stopShare(){ if(capTimer){ clearInterval(capTimer); capTimer=null; } if(!screenStream) return; for(const s of sessions()) s.detachScreen(); screenStream.getTracks().forEach(t=>t.stop()); screenStream=null; }
 
   class Session {
     constructor(kind,conf){ this.kind=kind; this.conf=conf; this.ws=null; this.selfId=null; this.peers=new Map(); this.dead=false; this.connect(); }
