@@ -24,6 +24,8 @@ const PORT = process.env.PORT || 3000
 const DIST = path.join(__dirname, '..', 'dist')
 // Where locally-built desktop installers are dropped (.exe/.msi/.dmg).
 const INSTALLERS = process.env.DESKTOP_INSTALLERS_DIR || path.join(__dirname, '..', 'desktop', 'installers')
+// If no local installer exists, send users to the GitHub Releases page instead.
+const RELEASES_URL = process.env.RELEASES_URL || 'https://github.com/mkuser608/text-share1/releases/latest'
 
 // ---------- HTTP ----------
 const app = express()
@@ -41,12 +43,16 @@ function findInstaller(exts) {
 }
 const notBuilt = (os) => `ShareHub Desktop for ${os} hasn't been built yet.\nBuild it locally (see desktop/README.md) and drop the installer in ${INSTALLERS}`
 app.get('/download/windows', (_req, res) => {
-  const f = findInstaller(['.exe', '.msi']); if (!f) return res.status(404).type('text').send(notBuilt('Windows'))
-  res.download(f)
+  const f = findInstaller(['.exe', '.msi'])
+  if (f) return res.download(f)
+  if (RELEASES_URL) return res.redirect(RELEASES_URL)
+  res.status(404).type('text').send(notBuilt('Windows'))
 })
 app.get('/download/mac', (_req, res) => {
-  const f = findInstaller(['.dmg']); if (!f) return res.status(404).type('text').send(notBuilt('macOS'))
-  res.download(f)
+  const f = findInstaller(['.dmg'])
+  if (f) return res.download(f)
+  if (RELEASES_URL) return res.redirect(RELEASES_URL)
+  res.status(404).type('text').send(notBuilt('macOS'))
 })
 app.get('/download', (_req, res) => {
   const hasWin = !!findInstaller(['.exe', '.msi'])
