@@ -73,7 +73,11 @@ a.off{background:#334155;color:#94a3b8;pointer-events:none}small{color:#94a3b8}<
 // Middleware form (no path pattern) works on both Express 4 and 5.
 app.use((req, res, next) => {
   if (req.method !== 'GET') return next()
-  res.sendFile(path.join(DIST, 'index.html'))
+  const index = path.join(DIST, 'index.html')
+  if (!fs.existsSync(index)) {
+    return res.status(200).type('html').send('<div style="font-family:system-ui;background:#0b0f19;color:#e2e8f0;min-height:100vh;display:grid;place-items:center;text-align:center"><div><h2>⚡ ShareHub — frontend not built yet</h2><p>Run <code>npm run build</code>, then restart with <code>npm start</code>.</p></div></div>')
+  }
+  res.sendFile(index)
 })
 
 const server = http.createServer(app)
@@ -224,4 +228,10 @@ wss.on('connection', (ws) => {
   })
 })
 
-server.listen(PORT, () => console.log(`ShareHub running on http://localhost:${PORT}`))
+server.listen(PORT, () => {
+  const hasDist = fs.existsSync(path.join(DIST, 'index.html'))
+  console.log(`ShareHub running on http://localhost:${PORT}`)
+  console.log(hasDist
+    ? '  serving frontend (dist/) + backend (WebSocket) on this one server'
+    : '  frontend not built yet — run `npm run build`, then `npm start` again')
+})
