@@ -9,6 +9,9 @@ try {
     if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, '')
   }
 } catch { /* noop */ }
-const cfg = { backend: env.BACKEND_URL || 'http://localhost:3000', frontend: env.FRONTEND_URL || 'http://localhost:5173' }
+const cfg = {
+  backend: process.env.BACKEND_URL || env.BACKEND_URL || 'http://localhost:3000',
+  frontend: process.env.FRONTEND_URL || env.FRONTEND_URL || 'http://localhost:5173',
+}
 fs.writeFileSync(path.join(__dirname, 'ui', 'config.js'), 'window.__CFG__ = ' + JSON.stringify(cfg) + '\n')
 console.log('desktop/ui/config.js ->', cfg)
