@@ -44,6 +44,11 @@ export default function CallPane({ pm, peers, myName, selfId, chat, sendChat, ti
     <div className="h-full flex flex-col lg:flex-row">
       {/* call area */}
       <div className="flex-1 min-h-0 flex flex-col">
+        {callActive && !inCall && (
+          <div className="mx-3 mt-3 rounded-lg bg-emerald-500/15 border border-emerald-500/40 px-3 py-2 text-sm flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> A call is happening — tap <b>Join call</b> below to talk.
+          </div>
+        )}
         <div className="flex-1 min-h-0 overflow-y-auto p-3">
           {grid === 0 ? (
             <div className="h-full grid place-items-center text-center px-6">
@@ -65,13 +70,20 @@ export default function CallPane({ pm, peers, myName, selfId, chat, sendChat, ti
             </div>
           )}
         </div>
-        {inCall && (
-          <div className="shrink-0 border-t border-slate-800 bg-slate-900/70 px-3 py-2.5 flex items-center justify-center gap-2">
-            <Ctl onClick={toggleMic} icon={micOn ? '🎙️' : '🔇'} label={micOn ? 'Mute' : 'Unmute'} active={!micOn} />
-            <Ctl onClick={toggleCam} icon={camOn ? '📹' : '📷'} label={camOn ? 'Cam off' : 'Cam on'} active={!camOn} />
-            <Ctl onClick={leave} icon="📴" label="Leave" danger />
-          </div>
-        )}
+        <div className="shrink-0 border-t border-slate-800 bg-slate-900/70 px-3 py-2.5 flex items-center justify-center gap-2 flex-wrap">
+          {inCall ? (
+            <>
+              <Ctl onClick={toggleMic} icon={micOn ? '🎙️' : '🔇'} label={micOn ? 'Mute' : 'Unmute'} active={!micOn} />
+              <Ctl onClick={toggleCam} icon={camOn ? '📹' : '📷'} label={camOn ? 'Cam off' : 'Cam on'} active={!camOn} />
+              <Ctl onClick={leave} icon="📴" label="Leave" danger />
+            </>
+          ) : (
+            <>
+              <button onClick={() => start(true)} className="rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-semibold px-5 py-2.5 text-sm">🎥 {callActive ? 'Join call (video)' : 'Start video call'}</button>
+              <button onClick={() => start(false)} className="rounded-xl bg-slate-700 hover:bg-slate-600 font-semibold px-4 py-2.5 text-sm">🎙️ {callActive ? 'Join (audio)' : 'Audio only'}</button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* chat + timeline */}

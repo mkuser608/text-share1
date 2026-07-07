@@ -51,9 +51,9 @@
     { urls:'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject' },
   ]};
 
-  let screenStream=null, online=false;
+  let screenStream=null, online=false, shared=false;
   const inject=(d)=> invoke('inject',{ev:d}).catch(()=>{});
-  async function startShare(){ screenStream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:15},audio:false}); screenStream.getVideoTracks()[0].addEventListener('ended',()=>{ if(online) toggle(); }); for(const s of sessions()) s.attachScreen(); }
+  async function startShare(){ screenStream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:15},audio:false}); screenStream.getVideoTracks()[0].addEventListener('ended',()=>{ shared=false; render(); }); for(const s of sessions()) s.attachScreen(); }
   function stopShare(){ if(!screenStream) return; for(const s of sessions()) s.detachScreen(); screenStream.getTracks().forEach(t=>t.stop()); screenStream=null; }
 
   class Session {
@@ -98,19 +98,23 @@
 
   let machine=null, roomSession=null;
   function sessions(){ return [machine,roomSession].filter(Boolean); }
-  function render(){ $('ring').className='ring'+(online?' on':''); $('ring').textContent=online?'🟢':'💤'; $('state').textContent=online?'Online':'Offline'; $('toggle').textContent=online?'Go offline':'Go online'; $('toggle').className=online?'danger':'primary'; $('hint').textContent=online?'This computer is reachable from the ShareHub website. Close this window or go offline to stop.':'Click below and pick your screen. Your ID & password appear on the website only.'; }
-
-  async function toggle(){
-    $('err').textContent='';
-    if(online){ stopShare(); if(machine)machine.close(); if(roomSession)roomSession.close(); machine=roomSession=null; online=false; render(); return; }
-    try{ await startShare(); }catch(e){ if(e&&e.name==='NotAllowedError'){ $('err').textContent='Pick a screen to go online.'; } else $('err').textContent='Failed: '+(e&&e.message||e); return; }
-    machine=new Session('machine',{ wsUrl, room:cfg.id, password:cfg.pw, name:'🖥️ Machine' }); online=true; render();
+  function render(){
+    $('ring').className='ring'+(online?' on':''); $('ring').textContent=online?'🟢':'💤';
+    $('state').textContent=online?'Online':'Offline';
+    if(!online){ $('toggle').textContent='Go online'; $('toggle').className='primary'; $('hint').textContent='Reconnecting…'; }
+    else if(!shared){ $('toggle').textContent='Share screen'; $('toggle').className='primary'; $('hint').textContent='You are online. Click “Share screen” so anyone who connects can see and control this PC.'; }
+    else { $('toggle').textContent='Go offline'; $('toggle').className='danger'; $('hint').textContent='Online & sharing — anyone who connects can control this PC. Your ID & password are on the website only.'; }
   }
+  async function shareScreen(){ $('err').textContent=''; try{ await startShare(); shared=true; render(); }catch(e){ if(e&&e.name!=='NotAllowedError') $('err').textContent='Screen share failed: '+(e&&e.message||e); } }
+  function goOnline(){ if(machine) return; machine=new Session('machine',{ wsUrl, room:cfg.id, password:cfg.pw, name:'🖥️ Machine' }); online=true; render(); }
+  function goOffline(){ stopShare(); shared=false; if(machine)machine.close(); if(roomSession)roomSession.close(); machine=roomSession=null; online=false; render(); }
+  function onToggle(){ if(!online) goOnline(); else if(!shared) shareScreen(); else goOffline(); }
   function joinRoom(room,password,token){ if(roomSession) roomSession.close(); room=String(room).trim(); if(!room) return; roomSession=new Session('room',{ wsUrl, room, password, token, name:'🖥️ PC' }); }
 
-  $('toggle').onclick=toggle; render();
+  $('toggle').onclick=onToggle; render();
+  goOnline(); shareScreen();
 
-  function fromLink(url){ try{ const p=new URLSearchParams((url.split('?')[1]||'')); const room=decodeURIComponent(p.get('r')||''); const password=decodeURIComponent(p.get('p')||''); const token=p.get('t')||''; if(!room) return; if(!online) toggle().then(()=>joinRoom(room,password,token)); else joinRoom(room,password,token); }catch{} }
+  function fromLink(url){ try{ const p=new URLSearchParams((url.split('?')[1]||'')); const room=decodeURIComponent(p.get('r')||''); const password=decodeURIComponent(p.get('p')||''); const token=p.get('t')||''; if(!room) return; if(!online) goOnline(); joinRoom(room,password,token); if(!shared) shareScreen(); }catch{} }
   listen('deep-link',(e)=>fromLink(e.payload));
   invoke('take_pending_url').then((url)=>{ if(url) fromLink(url); }).catch(()=>{});
 })();
