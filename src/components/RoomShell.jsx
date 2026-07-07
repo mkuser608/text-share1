@@ -156,7 +156,7 @@ export default function RoomShell({ conn, joined, roomKey, initialTab }) {
 
       <main className="flex-1 min-h-0 relative">
         <div className={tab === 'editor' ? 'h-full' : 'hidden'}><EditorPane ydoc={ydoc} awareness={awareness} /></div>
-        <div className={tab === 'files' ? 'h-full' : 'hidden'}><FilesPane files={files} fs={fs} selfId={conn.selfId} peerCount={peers.length} /></div>
+        <div className={tab === 'files' ? 'h-full' : 'hidden'}><FilesPane files={files} fs={fs} selfId={conn.selfId} peerCount={peers.length} roomKey={roomKey} /></div>
         <div className={tab === 'call' ? 'h-full' : 'hidden'}><CallPane pm={pm} peers={peers} myName={myName} selfId={conn.selfId} chat={chat} sendChat={sendChat} timeline={timeline} agents={agents} /></div>
         <div className={tab === 'remote' ? 'h-full' : 'hidden'}><RemotePane pm={pm} peers={peers} myName={myName} selfId={conn.selfId} agentApi={agentApi} ownCreds={ownCreds} /></div>
       </main>

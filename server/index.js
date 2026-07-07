@@ -26,6 +26,10 @@ const DIST = path.join(__dirname, '..', 'dist')
 const INSTALLERS = process.env.DESKTOP_INSTALLERS_DIR || path.join(__dirname, '..', 'desktop', 'installers')
 // If no local installer exists, send users to the GitHub Releases page instead.
 const RELEASES_URL = process.env.RELEASES_URL || 'https://github.com/mkuser608/text-share1/releases/latest'
+// Persisted (server-stored) shared files live here.
+const UPLOADS = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads')
+try { fs.mkdirSync(UPLOADS, { recursive: true }) } catch { /* noop */ }
+const safe = (s) => String(s || '').replace(/[^\w.-]/g, '').slice(0, 100)
 
 // ---------- HTTP ----------
 const app = express()
@@ -67,6 +71,23 @@ a.off{background:#334155;color:#94a3b8;pointer-events:none}small{color:#94a3b8}<
 <a class="btn ${hasWin ? '' : 'off'}" href="/download/windows">⬇ Windows</a>
 <a class="btn ${hasMac ? '' : 'off'}" href="/download/mac">⬇ macOS</a>
 <p><small>After installing, open it and click “Go online”, then use its Machine ID + password on the website.</small></p></div></body></html>`)
+})
+
+// ---- Persisted file storage (server relay; works without WebRTC/TURN) ----
+app.put('/files/:room/:id', express.raw({ type: '*/*', limit: '1024mb' }), (req, res) => {
+  const room = safe(req.params.room), id = safe(req.params.id)
+  if (!room || !id || !req.body || !req.body.length) return res.status(400).json({ error: 'bad request' })
+  try {
+    const dir = path.join(UPLOADS, room); fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, id), req.body)
+    res.json({ ok: true, url: `/files/${room}/${id}` })
+  } catch (e) { res.status(500).json({ error: String(e) }) }
+})
+app.get('/files/:room/:id', (req, res) => {
+  const p = path.join(UPLOADS, safe(req.params.room), safe(req.params.id))
+  if (!fs.existsSync(p)) return res.status(404).send('File not found (it may have been removed).')
+  const name = req.query.name ? safe(req.query.name) : safe(req.params.id)
+  res.download(p, name)
 })
 
 // SPA fallback: every room path serves the app.
@@ -172,6 +193,7 @@ wss.on('connection', (ws) => {
             id: String(msg.id), name: String(msg.name).slice(0, 255),
             size: Number(msg.size) || 0, mime: String(msg.mime || ''),
             owner: selfId, ownerName: r.clients.get(selfId)?.name || '?',
+            persisted: !!msg.persisted, url: msg.url ? String(msg.url).slice(0, 300) : null,
             at: Date.now()
           }
           r.files.set(f.id, f)
@@ -218,13 +240,15 @@ wss.on('connection', (ws) => {
     if (!r || !selfId) return
     r.clients.delete(selfId)
     broadcast(r, { type: 'peer-left', id: selfId })
+    // P2P (non-persisted) offers die with their owner; persisted files stay.
     for (const [fid, f] of r.files) {
-      if (f.owner === selfId) {
+      if (f.owner === selfId && !f.persisted) {
         r.files.delete(fid)
         broadcast(r, { type: 'file-revoke', id: fid })
       }
     }
-    if (r.clients.size === 0) rooms.delete(roomKey)
+    // NOTE: the room (editor text + persisted files) is kept in memory so it
+    // survives everyone leaving. It only clears on a server restart.
   })
 })
 

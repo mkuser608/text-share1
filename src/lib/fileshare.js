@@ -42,6 +42,26 @@ export class FileShare extends Emitter {
     return id
   }
 
+  /** Upload a file to the server so it persists and downloads without WebRTC. */
+  async offerPersisted(file, roomKey, onProgress) {
+    const id = crypto.randomUUID()
+    const backend = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || ''
+    const base = backend ? backend.replace(/\/+$/, '') : ''
+    const putUrl = `${base}/files/${encodeURIComponent(roomKey)}/${id}`
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('PUT', putUrl)
+      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+      xhr.upload.onprogress = (e) => { if (onProgress && e.lengthComputable) onProgress(e.loaded, e.total) }
+      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error('upload failed (' + xhr.status + ')'))
+      xhr.onerror = () => reject(new Error('upload failed'))
+      xhr.send(file)
+    })
+    const dl = base + `/files/${encodeURIComponent(roomKey)}/${id}?name=` + encodeURIComponent(file.name)
+    this.conn.send({ type: 'file-offer', id, name: file.name, size: file.size, mime: file.type, persisted: true, url: dl })
+    return id
+  }
+
   revoke(id) {
     this.outgoing.delete(id)
     this.conn.send({ type: 'file-revoke', id })

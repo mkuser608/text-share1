@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  BACKEND_URL: https://api.text.ipoup.in
+  BACKEND_URL: https://text.ipoup.in
   FRONTEND_URL: https://text.ipoup.in
 
 jobs:
