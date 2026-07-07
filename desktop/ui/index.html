@@ -52,6 +52,7 @@
 
   let screenStream=null, online=false, shared=false;
   const inject=(d)=> invoke('inject',{ev:d}).catch(()=>{});
+  function tune(sender){ try{ const p=sender.getParameters(); p.encodings=(p.encodings&&p.encodings.length)?p.encodings:[{}]; p.encodings[0].maxBitrate=8000000; p.encodings[0].maxFramerate=15; sender.setParameters(p).catch(()=>{}); }catch(e){} }
   let capTimer=null;
   async function startShare(){
     if(screenStream) return;
@@ -64,8 +65,9 @@
       } }catch(e){} pending=false; };
     await grab();
     if(!canvas.width){ canvas.width=1280; canvas.height=720; }
-    screenStream = canvas.captureStream(12);
-    capTimer = setInterval(grab, 90);
+    screenStream = canvas.captureStream(15);
+    const vt0 = screenStream.getVideoTracks()[0]; if(vt0) vt0.contentHint = 'detail';
+    capTimer = setInterval(grab, 66);
     for(const s of sessions()) s.attachScreen();
   }
   function stopShare(){ if(capTimer){ clearInterval(capTimer); capTimer=null; } if(!screenStream) return; for(const s of sessions()) s.detachScreen(); screenStream.getTracks().forEach(t=>t.stop()); screenStream=null; }
@@ -87,7 +89,7 @@
       case 'relay': this.onRelay(m.from,m.d); break;
     } }
     announce(){ this.relay('*',{t:'agent-bind',agentId:this.selfId,ownerId:this.selfId}); if(this.conf.token) this.relay('*',{t:'agent-ready',agentId:this.selfId,token:this.conf.token}); }
-    attachScreen(){ if(!screenStream) return; for(const [,p] of this.peers){ for(const t of screenStream.getTracks()) p.pc.addTrack(t,screenStream); this.meta(p); } }
+    attachScreen(){ if(!screenStream) return; for(const [,p] of this.peers){ for(const t of screenStream.getTracks()){ const snd=p.pc.addTrack(t,screenStream); if(t.kind==='video') tune(snd); } this.meta(p); } }
     detachScreen(){ for(const [,p] of this.peers){ for(const s of p.pc.getSenders()){ if(s.track&&s.track.kind==='video'){ try{p.pc.removeTrack(s);}catch{} } } } }
     meta(p){ if(p.dc&&p.dc.readyState==='open'&&screenStream) p.dc.send(JSON.stringify({t:'stream-meta',sid:screenStream.id,kind:'screen'})); }
     addPeer(id){ if(this.peers.has(id)) return; const polite=String(this.selfId)>String(id); const pc=new RTCPeerConnection(ICE);
@@ -99,7 +101,7 @@
       pc.onicecandidate=(e)=>{ if(e.candidate) this.signal(id,{candidate:e.candidate}); };
       pc.onnegotiationneeded=async()=>{ try{ st.makingOffer=true; await pc.setLocalDescription(); this.signal(id,{description:pc.localDescription}); }catch(e){} finally{ st.makingOffer=false; } };
       pc.oniceconnectionstatechange=()=>{ if(pc.iceConnectionState==='failed'){ try{pc.restartIce();}catch{} } };
-      if(screenStream) for(const t of screenStream.getTracks()) pc.addTrack(t,screenStream); }
+      if(screenStream) for(const t of screenStream.getTracks()){ const snd=pc.addTrack(t,screenStream); if(t.kind==='video') tune(snd); } }
     removePeer(id){ const p=this.peers.get(id); if(!p) return; try{p.pc.close();}catch{} this.peers.delete(id); }
     async onSignal(from,d){ const p=this.peers.get(from); if(!p) return; const pc=p.pc;
       try{ if(d.description){ const col=d.description.type==='offer'&&(p.makingOffer||pc.signalingState!=='stable'); p.ignoreOffer=!p.polite&&col; if(p.ignoreOffer) return;

@@ -162,11 +162,14 @@ fn capture_frame() -> Result<String, String> {
     let raw: Vec<u8> = cap.into_raw();
     let buf = image::RgbaImage::from_raw(w, h, raw).ok_or_else(|| "bad frame".to_string())?;
     let dynimg = image::DynamicImage::ImageRgba8(buf);
-    let target = 1600u32;
-    let scaled = if w > target { dynimg.resize(target, u32::MAX / 2, image::imageops::FilterType::Triangle) } else { dynimg };
-    let rgb = image::DynamicImage::ImageRgb8(scaled.to_rgb8());
+    let target = 1920u32;
+    let scaled = if w > target { dynimg.resize(target, u32::MAX / 2, image::imageops::FilterType::Lanczos3) } else { dynimg };
+    let rgb = scaled.to_rgb8();
     let mut cur = std::io::Cursor::new(Vec::<u8>::new());
-    rgb.write_to(&mut cur, image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;
+    {
+        let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cur, 85);
+        enc.encode(rgb.as_raw(), rgb.width(), rgb.height(), image::ExtendedColorType::Rgb8).map_err(|e| e.to_string())?;
+    }
     Ok(STANDARD.encode(cur.get_ref()))
 }
 
