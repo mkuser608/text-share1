@@ -14,7 +14,8 @@
         "title": "ShareHub Desktop",
         "width": 440,
         "height": 600,
-        "resizable": true
+        "resizable": true,
+        "visible": false
       }
     ],
     "security": {
@@ -24,13 +25,18 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["sharehub"]
+        "schemes": [
+          "sharehub"
+        ]
       }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "dmg"],
+    "targets": [
+      "nsis",
+      "dmg"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

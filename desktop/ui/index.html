@@ -96,7 +96,7 @@
       const dc=pc.createDataChannel('ctl',{negotiated:true,id:0}); dc.binaryType='arraybuffer'; st.dc=dc;
       dc.onopen=()=>this.meta(st);
       dc.onmessage=(e)=>{ if(typeof e.data!=='string') return; let m; try{m=JSON.parse(e.data);}catch{return;}
-        if(m.t==='claim-owner' && this.conf.token && m.token===this.conf.token){ dc.send(JSON.stringify({t:'creds', id:cfg.id, pw:cfg.pw})); } };
+        if(m.t==='claim-owner' && this.conf.token && m.token===this.conf.token){ this.ownerId=id; dc.send(JSON.stringify({t:'creds', id:cfg.id, pw:cfg.pw})); } };
       pc.onicecandidate=(e)=>{ if(e.candidate) this.signal(id,{candidate:e.candidate}); };
       pc.onnegotiationneeded=async()=>{ try{ st.makingOffer=true; await pc.setLocalDescription(); this.signal(id,{description:pc.localDescription}); }catch(e){} finally{ st.makingOffer=false; } };
       pc.oniceconnectionstatechange=()=>{ if(pc.iceConnectionState==='failed'){ try{pc.restartIce();}catch{} } };
@@ -107,7 +107,7 @@
           await pc.setRemoteDescription(d.description); for(const c of p.candQueue){ try{await pc.addIceCandidate(c);}catch{} } p.candQueue=[];
           if(d.description.type==='offer'){ await pc.setLocalDescription(); this.signal(from,{description:pc.localDescription}); } }
         else if(d.candidate){ if(pc.remoteDescription&&pc.remoteDescription.type){ try{await pc.addIceCandidate(d.candidate);}catch(e){ if(!p.ignoreOffer) throw e; } } else p.candQueue.push(d.candidate); } }catch(e){} }
-    onRelay(from,d){ if(!d||!d.t) return; if(d.t.startsWith('rc-')&&d.t!=='rc-request'&&d.t!=='rc-stop'){ inject(d); } }
+    onRelay(from,d){ if(!d||!d.t) return; if(d.t==='set-sharing' && from===this.ownerId){ if(d.on) startShare(); else stopShare(); return; } if(d.t.startsWith('rc-')&&d.t!=='rc-request'&&d.t!=='rc-stop'){ inject(d); } }
     close(){ this.dead=true; for(const id of [...this.peers.keys()]) this.removePeer(id); if(this.ws){try{this.ws.close();}catch{}} }
   }
 

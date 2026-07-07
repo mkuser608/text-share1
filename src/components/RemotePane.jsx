@@ -11,6 +11,7 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
   const [copied, setCopied] = useState(false)
   const [otherId, setOtherId] = useState('')
   const [otherPw, setOtherPw] = useState('')
+  const [paused, setPaused] = useState(false)
   const timerRef = useRef(null)
   const { agents = {}, myAgentId, os, downloads } = agentApi || {}
 
@@ -89,7 +90,12 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
             <div className="text-[11px] text-slate-500 mt-2">Password</div>
             <div className="font-bold select-all">{ownCreds.pw}</div>
             <button onClick={copyCreds} className="mt-3 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 px-3 py-1.5">{copied ? '✓ copied' : 'Copy ID + password'}</button>
-            <div className="text-[11px] text-emerald-400 mt-2">● Online — others can connect with these</div>
+            <div className={`text-[11px] mt-2 ${paused ? 'text-slate-400' : 'text-emerald-400'}`}>{paused ? '● Paused — no one can connect' : '● Online — others can connect with these'}</div>
+            <div className="mt-2 flex gap-2 justify-center">
+              {paused
+                ? <button onClick={() => { agentApi.sendToAgent(myAgentId, { t: 'set-sharing', on: true }); setPaused(false) }} className="text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1.5">Connect</button>
+                : <button onClick={() => { agentApi.sendToAgent(myAgentId, { t: 'set-sharing', on: false }); setPaused(true) }} className="text-xs rounded-lg bg-rose-500/80 hover:bg-rose-500 text-white font-semibold px-3 py-1.5">Disconnect</button>}
+            </div>
           </div>
         ) : panel === 'launching' ? (
           <div className="mt-3 text-xs text-slate-300 flex items-center gap-2"><span className="w-3 h-3 rounded-full border-2 border-sky-400 border-t-transparent animate-spin" /> Opening ShareHub Desktop…</div>

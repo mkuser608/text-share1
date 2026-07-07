@@ -182,6 +182,12 @@ fn deliver(app: &tauri::AppHandle, url: &str) {
 }
 
 fn main() {
+    // Keep the (hidden) webview running at full speed for capture/hosting in the background.
+    std::env::set_var(
+        "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+        "--disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows",
+    );
+
     let enigo = Enigo::new(&Settings::default()).expect("failed to init input backend");
 
     tauri::Builder::default()
@@ -197,6 +203,17 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Don't quit — hide to the tray and keep hosting in the background.
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .manage(AppState {
             enigo: Mutex::new(enigo),
             pending: Mutex::new(None),
@@ -225,6 +242,37 @@ fn main() {
                     deliver(&handle, u.as_str());
                 }
             });
+
+            // system tray so the app can live in the background
+            {
+                use tauri::menu::{Menu, MenuItem};
+                use tauri::tray::TrayIconBuilder;
+                let show = MenuItem::with_id(app, "show", "Open ShareHub", true, None::<&str>)?;
+                let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+                let menu = Menu::with_items(app, &[&show, &quit])?;
+                let mut builder = TrayIconBuilder::new().menu(&menu).tooltip("ShareHub Desktop");
+                if let Some(icon) = app.default_window_icon() {
+                    builder = builder.icon(icon.clone());
+                }
+                builder
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "quit" => app.exit(0),
+                        "show" => {
+                            if let Some(w) = app.get_webview_window("main") {
+                                let _ = w.show();
+                                let _ = w.set_focus();
+                            }
+                        }
+                        _ => {}
+                    })
+                    .build(app)?;
+            }
+
+            // launch on login so it's always available without reopening
+            {
+                use tauri_plugin_autostart::ManagerExt;
+                let _ = app.autolaunch().enable();
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
