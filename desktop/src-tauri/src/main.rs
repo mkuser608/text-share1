@@ -1,6 +1,7 @@
 // Prevents an extra console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::sync::mpsc::Sender;
 use std::sync::Mutex;
 
 use enigo::{
@@ -27,8 +28,10 @@ struct Ev {
     #[serde(default)] meta: bool,
 }
 
+// enigo is NOT Send/Sync on some platforms (e.g. macOS), so it can't live in
+// Tauri's shared State. It runs on its own thread; commands post events to it.
 struct AppState {
-    enigo: Mutex<Enigo>,
+    tx: Mutex<Sender<Ev>>,
     pending: Mutex<Option<String>>,
     creds: Mutex<(String, String)>,
 }
@@ -64,18 +67,16 @@ fn map_key(k: &str) -> Option<Key> {
     })
 }
 
-/// Inject one control event into the real OS input stream.
-#[tauri::command]
-fn inject(state: State<AppState>, ev: Ev) -> Result<(), String> {
-    let mut enigo = state.enigo.lock().map_err(|e| e.to_string())?;
-    let (w, h) = enigo.main_display().map_err(|e| e.to_string())?;
+/// Inject one control event into the OS input stream (runs on the input thread).
+fn apply(enigo: &mut Enigo, ev: Ev) {
+    let (w, h) = match enigo.main_display() { Ok(d) => d, Err(_) => return };
     let abs = |x: f64, y: f64| ((x * w as f64) as i32, (y * h as f64) as i32);
 
     match ev.t.as_str() {
         "rc-move" => {
             if let (Some(x), Some(y)) = (ev.x, ev.y) {
                 let (px, py) = abs(x, y);
-                enigo.move_mouse(px, py, Coordinate::Abs).map_err(|e| e.to_string())?;
+                let _ = enigo.move_mouse(px, py, Coordinate::Abs);
             }
         }
         "rc-down" => {
@@ -83,33 +84,29 @@ fn inject(state: State<AppState>, ev: Ev) -> Result<(), String> {
                 let (px, py) = abs(x, y);
                 let _ = enigo.move_mouse(px, py, Coordinate::Abs);
             }
-            enigo.button(btn(ev.button), Press).map_err(|e| e.to_string())?;
+            let _ = enigo.button(btn(ev.button), Press);
         }
-        "rc-up" => {
-            enigo.button(btn(ev.button), Release).map_err(|e| e.to_string())?;
-        }
+        "rc-up" => { let _ = enigo.button(btn(ev.button), Release); }
         "rc-click" => {
             if let (Some(x), Some(y)) = (ev.x, ev.y) {
                 let (px, py) = abs(x, y);
                 let _ = enigo.move_mouse(px, py, Coordinate::Abs);
             }
-            enigo.button(btn(ev.button), Click).map_err(|e| e.to_string())?;
+            let _ = enigo.button(btn(ev.button), Click);
         }
         "rc-dblclick" => {
             let _ = enigo.button(btn(ev.button), Click);
-            enigo.button(btn(ev.button), Click).map_err(|e| e.to_string())?;
+            let _ = enigo.button(btn(ev.button), Click);
         }
         "rc-wheel" => {
             if let Some(dy) = ev.dy {
                 let steps = ((dy.abs() / 40.0).max(1.0)) as i32;
                 let n = if dy > 0.0 { steps } else { -steps };
-                enigo.scroll(n, Axis::Vertical).map_err(|e| e.to_string())?;
+                let _ = enigo.scroll(n, Axis::Vertical);
             }
         }
         "rc-text" => {
-            if let Some(t) = ev.text {
-                enigo.text(&t).map_err(|e| e.to_string())?;
-            }
+            if let Some(t) = ev.text.as_deref() { let _ = enigo.text(t); }
         }
         "rc-combo" => {
             let key = ev
@@ -131,24 +128,16 @@ fn inject(state: State<AppState>, ev: Ev) -> Result<(), String> {
         }
         _ => {}
     }
-    Ok(())
 }
 
-/// Returns and clears the last sharehub:// launch URL (cold-start safe).
+#[tauri::command]
+fn inject(state: State<AppState>, ev: Ev) {
+    if let Ok(tx) = state.tx.lock() { let _ = tx.send(ev); }
+}
+
 #[tauri::command]
 fn take_pending_url(state: State<AppState>) -> Option<String> {
     state.pending.lock().ok().and_then(|mut p| p.take())
-}
-
-/// Open a URL in the user's default browser (no extra plugin needed).
-#[tauri::command]
-fn open_url(url: String) {
-    #[cfg(target_os = "windows")]
-    { let _ = std::process::Command::new("cmd").args(["/C", "start", "", &url]).spawn(); }
-    #[cfg(target_os = "macos")]
-    { let _ = std::process::Command::new("open").arg(&url).spawn(); }
-    #[cfg(target_os = "linux")]
-    { let _ = std::process::Command::new("xdg-open").arg(&url).spawn(); }
 }
 
 /// Capture the primary screen as a base64 JPEG (downscaled). Native — no picker.
@@ -260,10 +249,19 @@ fn main() {
         "--disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows",
     );
 
-    let enigo = Enigo::new(&Settings::default()).expect("failed to init input backend");
+    // Dedicated input thread — owns enigo (which isn't Send/Sync everywhere).
+    let (tx, rx) = std::sync::mpsc::channel::<Ev>();
+    std::thread::spawn(move || {
+        let mut enigo = match Enigo::new(&Settings::default()) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        while let Ok(ev) = rx.recv() {
+            apply(&mut enigo, ev);
+        }
+    });
 
     tauri::Builder::default()
-        // single-instance MUST be registered first; forwards deep links to the running app
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             for a in &argv {
                 if a.starts_with("sharehub://") {
@@ -281,13 +279,12 @@ fn main() {
         ))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                // Don't quit — hide to the tray and keep hosting in the background.
                 api.prevent_close();
                 let _ = window.hide();
             }
         })
         .manage(AppState {
-            enigo: Mutex::new(enigo),
+            tx: Mutex::new(tx),
             pending: Mutex::new(None),
             creds: Mutex::new((String::new(), String::new())),
         })
@@ -295,20 +292,16 @@ fn main() {
         .setup(|app| {
             use tauri_plugin_deep_link::DeepLinkExt;
 
-            // Register the scheme at runtime (needed on Windows/Linux dev).
             #[cfg(any(windows, target_os = "linux"))]
             {
                 let _ = app.deep_link().register("sharehub");
             }
 
-            // Deliver the launch URL (cold start) to the webview.
             if let Ok(Some(urls)) = app.deep_link().get_current() {
                 if let Some(u) = urls.first() {
                     deliver(&app.handle(), u.as_str());
                 }
             }
-
-            // Deliver any later URLs (app already running).
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
                 for u in event.urls() {
@@ -359,4 +352,15 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running ShareHub Desktop");
+}
+
+/// Open a URL in the user's default browser (no extra plugin needed).
+#[tauri::command]
+fn open_url(url: String) {
+    #[cfg(target_os = "windows")]
+    { let _ = std::process::Command::new("cmd").args(["/C", "start", "", &url]).spawn(); }
+    #[cfg(target_os = "macos")]
+    { let _ = std::process::Command::new("open").arg(&url).spawn(); }
+    #[cfg(target_os = "linux")]
+    { let _ = std::process::Command::new("xdg-open").arg(&url).spawn(); }
 }
