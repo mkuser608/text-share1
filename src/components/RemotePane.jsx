@@ -29,8 +29,17 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
   // find a screen stream for a peer
   const screenOf = (peerId) => {
     const map = pm.remote.get(peerId); if (!map) return null
-    for (const [, e] of map) if (e.kind === 'screen' && e.stream) return e.stream
-    return null
+    // Prefer a 'screen'-tagged stream, but the desktop app only ever sends a
+    // screen, so accept any stream that has a live video track (the stream id
+    // can be remapped by WebRTC, so the 'screen' label may not line up).
+    let fallback = null
+    for (const [, e] of map) {
+      if (!e.stream) continue
+      if (e.kind === 'screen') return e.stream
+      const v = e.stream.getVideoTracks ? e.stream.getVideoTracks() : []
+      if (v.length) fallback = e.stream
+    }
+    return fallback
   }
 
   const startControl = (peerId, agentId) => { agentApi.sendToAgent(agentId, { t: 'rc-request', name: myName }); setCtrl({ peerId, agentId }) }
@@ -131,10 +140,4 @@ function Row({ name, id, tag, action }) {
 
 function ControlVideo({ stream, send }) {
   const ref = useRef(null); const detach = useRef(null)
-  useEffect(() => { if (ref.current && ref.current.srcObject !== stream) ref.current.srcObject = stream }, [stream])
-  useEffect(() => {
-    if (ref.current) { detach.current = attachFullControl(ref.current, send); ref.current.focus?.() }
-    return () => { detach.current?.(); detach.current = null }
-  }, [])
-  return <video ref={ref} autoPlay playsInline className="max-h-full max-w-full rounded-lg border border-emerald-500/40 object-contain" tabIndex={0} />
-}
+  useEffect(() => { if (ref.current && ref.current.srcObject 
