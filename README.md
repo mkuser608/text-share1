@@ -48,9 +48,7 @@ handles WebSockets is simpler, smaller, and deploys as one `npm start`.
 
 ```bash
 npm install        # install dependencies
-npm run dev        # Vite dev server (proxies /ws to the Node server on :3000)
-# in a second terminal:
-npm start          # Node server (WebSocket signaling + Yjs relay) on :3000
+npm run dev        # runs BOTH: backend (:3000) + frontend (:5173) in one command
 ```
 
 Production:

@@ -5,9 +5,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
     "build": "vite build",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "dev:web": "vite",
+    "server": "node server/index.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
