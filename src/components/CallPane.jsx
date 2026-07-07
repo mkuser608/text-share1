@@ -143,16 +143,33 @@ export default function CallPane({ pm, peers, myName, selfId, chat, sendChat, ti
 
 function Tile({ stream, label, mine, muted, camOff, isScreen }) {
   const ref = useRef(null)
+  const boxRef = useRef(null)
+  const [fs, setFs] = useState(false)
   useEffect(() => { if (ref.current && ref.current.srcObject !== stream) ref.current.srcObject = stream }, [stream])
+  useEffect(() => {
+    const onFs = () => setFs(document.fullscreenElement === boxRef.current)
+    document.addEventListener('fullscreenchange', onFs)
+    return () => document.removeEventListener('fullscreenchange', onFs)
+  }, [])
+  const toggleFull = () => {
+    const el = boxRef.current; if (!el) return
+    if (document.fullscreenElement) document.exitFullscreen?.()
+    else (el.requestFullscreen?.() || el.webkitRequestFullscreen?.())
+  }
   return (
-    <div className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-700/60 aspect-video">
-      <video ref={ref} autoPlay playsInline muted={mine || muted} className={`w-full h-full ${isScreen ? 'object-contain' : 'object-cover'} ${mine && !isScreen ? '-scale-x-100' : ''}`} />
+    <div ref={boxRef} className={`group relative rounded-xl overflow-hidden bg-slate-950 border border-slate-700/60 ${fs ? 'w-screen h-screen' : 'aspect-video'}`}>
+      <video ref={ref} autoPlay playsInline muted={mine || muted} onDoubleClick={toggleFull}
+        className={`w-full h-full ${isScreen || fs ? 'object-contain' : 'object-cover'} ${mine && !isScreen ? '-scale-x-100' : ''}`} />
       {camOff && !isScreen && (
         <div className="absolute inset-0 grid place-items-center bg-slate-900">
           <div className="w-16 h-16 rounded-full grid place-items-center text-2xl font-bold text-slate-900" style={{ background: colorFor(label) }}>{label.trim()[0]?.toUpperCase()}</div>
         </div>
       )}
       <div className="absolute bottom-1.5 left-1.5 text-[11px] font-medium bg-black/60 rounded-md px-2 py-0.5 truncate max-w-[70%]">{label}</div>
+      <button onClick={toggleFull} title={fs ? 'Exit full screen' : 'Full screen'}
+        className="absolute top-1.5 right-1.5 rounded-md bg-black/55 hover:bg-black/80 text-white w-8 h-8 grid place-items-center text-sm opacity-0 group-hover:opacity-100 focus:opacity-100 transition">
+        {fs ? '🡼' : '⛶'}
+      </button>
     </div>
   )
 }

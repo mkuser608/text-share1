@@ -9,6 +9,7 @@ export default defineConfig({
     proxy: {
       '/ws': { target: 'ws://localhost:3000', ws: true },
       '/download': { target: 'http://localhost:3000', changeOrigin: true },
+      '/files': { target: 'http://localhost:3000', changeOrigin: true },
       '/healthz': { target: 'http://localhost:3000', changeOrigin: true },
     },
   },

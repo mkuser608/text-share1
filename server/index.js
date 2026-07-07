@@ -29,6 +29,10 @@ const RELEASES_URL = process.env.RELEASES_URL || 'https://github.com/mkuser608/t
 // Persisted (server-stored) shared files live here.
 const UPLOADS = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads')
 try { fs.mkdirSync(UPLOADS, { recursive: true }) } catch { /* noop */ }
+// Persisted room state (editor text + file list + password) lives here.
+const DATA = process.env.DATA_DIR || path.join(__dirname, '..', 'data')
+const ROOMS_DIR = path.join(DATA, 'rooms')
+try { fs.mkdirSync(ROOMS_DIR, { recursive: true }) } catch { /* noop */ }
 const safe = (s) => String(s || '').replace(/[^\w.-]/g, '').slice(0, 100)
 
 // ---------- HTTP ----------
@@ -103,10 +107,46 @@ app.use((req, res, next) => {
 
 const server = http.createServer(app)
 
-// ---------- Rooms (in-memory) ----------
+// ---------- Rooms (in-memory + disk-persisted) ----------
 const rooms = new Map()
 let nextId = 1
 const genId = () => `p${nextId++}_${Math.random().toString(36).slice(2, 8)}`
+
+// ---- Room persistence: editor text + file list + password survive restarts ----
+const roomFname = (key) => Buffer.from(String(key)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '') + '.json'
+const saveTimers = new Map()
+function saveRoomNow(key) {
+  const r = rooms.get(key); if (!r) return
+  try {
+    const data = {
+      key,
+      passwordHash: r.passwordHash,
+      doc: Buffer.from(Y.encodeStateAsUpdate(r.ydoc)).toString('base64'),
+      files: [...r.files.values()].filter(f => f.persisted), // only server-stored files survive
+    }
+    fs.writeFileSync(path.join(ROOMS_DIR, roomFname(key)), JSON.stringify(data))
+  } catch (e) { console.error('saveRoom error:', e) }
+}
+function saveRoom(key) {
+  clearTimeout(saveTimers.get(key))
+  saveTimers.set(key, setTimeout(() => saveRoomNow(key), 700))
+}
+function loadRooms() {
+  try {
+    for (const fn of fs.readdirSync(ROOMS_DIR)) {
+      if (!fn.endsWith('.json')) continue
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(ROOMS_DIR, fn), 'utf8'))
+        if (!data.key || !data.passwordHash) continue
+        const ydoc = new Y.Doc()
+        if (data.doc) Y.applyUpdate(ydoc, Buffer.from(data.doc, 'base64'))
+        const files = new Map((data.files || []).map(f => [f.id, f]))
+        rooms.set(data.key, { passwordHash: data.passwordHash, ydoc, clients: new Map(), files })
+      } catch (e) { console.error('loadRoom', fn, e) }
+    }
+    if (rooms.size) console.log(`  restored ${rooms.size} saved room(s) from disk`)
+  } catch (e) { console.error('loadRooms error:', e) }
+}
 
 const send = (ws, obj) => {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj))
@@ -145,6 +185,7 @@ wss.on('connection', (ws) => {
           const passwordHash = await bcrypt.hash(String(msg.password), 10)
           rooms.set(roomKey, { passwordHash, ydoc: new Y.Doc(), clients: new Map(), files: new Map() })
           joinRoom(msg.name, msg.role)
+          saveRoom(roomKey)
           break
         }
 
@@ -161,6 +202,7 @@ wss.on('connection', (ws) => {
           const r = room(); if (!authed || !r) return
           Y.applyUpdate(r.ydoc, Buffer.from(msg.u, 'base64'))
           broadcast(r, { type: 'yupdate', u: msg.u }, selfId)
+          saveRoom(roomKey)   // persist editor text
           break
         }
 
@@ -198,6 +240,7 @@ wss.on('connection', (ws) => {
           }
           r.files.set(f.id, f)
           broadcast(r, { type: 'file-offer', file: f })
+          if (f.persisted) saveRoom(roomKey)
           break
         }
 
@@ -207,6 +250,7 @@ wss.on('connection', (ws) => {
           if (f && f.owner === selfId) {
             r.files.delete(msg.id)
             broadcast(r, { type: 'file-revoke', id: msg.id })
+            if (f.persisted) saveRoom(roomKey)
           }
           break
         }
@@ -247,11 +291,12 @@ wss.on('connection', (ws) => {
         broadcast(r, { type: 'file-revoke', id: fid })
       }
     }
-    // NOTE: the room (editor text + persisted files) is kept in memory so it
-    // survives everyone leaving. It only clears on a server restart.
+    // The room (editor text + persisted files) is kept in memory AND on disk,
+    // so it survives everyone leaving and a server restart.
   })
 })
 
+loadRooms()
 server.listen(PORT, () => {
   const hasDist = fs.existsSync(path.join(DIST, 'index.html'))
   console.log(`ShareHub running on http://localhost:${PORT}`)
