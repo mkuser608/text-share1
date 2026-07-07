@@ -12,11 +12,14 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
   const [otherId, setOtherId] = useState('')
   const [otherPw, setOtherPw] = useState('')
   const [paused, setPaused] = useState(false)
+  const [localCreds, setLocalCreds] = useState(null)
   const timerRef = useRef(null)
   const { agents = {}, myAgentId, os, downloads } = agentApi || {}
 
   useEffect(() => {
     const off = pm.on('remote-changed', () => force(n => n + 1))
+    // read this machine's own creds from the local ShareHub Desktop app (if running)
+    fetch('http://127.0.0.1:47615', { cache: 'no-store' }).then(r => r.json()).then(c => { if (c && c.id) setLocalCreds(c) }).catch(() => {})
     return () => { off(); clearTimeout(timerRef.current) }
   }, [])
   useEffect(() => { if (myAgentId) { setPanel(null); clearTimeout(timerRef.current) } }, [myAgentId])
@@ -26,6 +29,15 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
     agentApi.enableFullControl(); setPanel('launching')
     clearTimeout(timerRef.current); timerRef.current = setTimeout(() => setPanel(p => (p === 'launching' ? 'download' : p)), 3500)
   }
+  const showMyCreds = async () => {
+    try {
+      const r = await fetch('http://127.0.0.1:47615', { cache: 'no-store' })
+      const c = await r.json()
+      if (c && c.id) { setLocalCreds(c); return }
+    } catch {}
+    enable() // fallback: launch the app + P2P handshake
+  }
+  const shownCreds = ownCreds || localCreds
 
   // desktop app only ever sends a screen; accept any stream with a video track
   const screenOf = (peerId) => {
@@ -46,7 +58,7 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
     if (!ctrl) return
     try { const text = await navigator.clipboard.readText(); if (text) agentApi.sendToAgent(ctrl.agentId, { t: 'rc-text', text }) } catch {}
   }
-  const copyCreds = () => { if (!ownCreds) return; try { navigator.clipboard.writeText(`ShareHub — ID: ${fmtId(ownCreds.id)}  Password: ${ownCreds.pw}`) } catch {} setCopied(true); setTimeout(() => setCopied(false), 1500) }
+  const copyCreds = () => { const c = ownCreds || localCreds; if (!c) return; try { navigator.clipboard.writeText(`ShareHub — ID: ${fmtId(c.id)}  Password: ${c.pw}`) } catch {} setCopied(true); setTimeout(() => setCopied(false), 1500) }
   const connectOther = (e) => {
     e.preventDefault()
     const id = otherId.replace(/\D/g, '').trim(); if (!id || !otherPw) return
@@ -67,7 +79,7 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
             <button onClick={stopControl} className="text-xs rounded-lg bg-rose-500/90 hover:bg-rose-500 text-white font-semibold px-3 py-1.5">Disconnect</button>
           </div>
         </div>
-        <div className="flex-1 min-h-0 grid place-items-center p-2">
+        <div className="flex-1 min-h-0 p-1">
           {stream ? <ControlVideo stream={stream} send={(evt) => agentApi.sendToAgent(ctrl.agentId, evt)} />
             : <div className="text-slate-400 text-sm text-center">Connecting to {name}'s screen…<div className="text-xs text-slate-600 mt-1">Make sure ShareHub Desktop is online on that PC.</div></div>}
         </div>
@@ -83,12 +95,12 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
       {/* your computer */}
       <div className="rounded-2xl bg-slate-800/50 border border-slate-700/60 p-4">
         <div className="font-semibold flex items-center gap-2">🖥️ Your computer</div>
-        {ownCreds ? (
+        {shownCreds ? (
           <div className="mt-3 rounded-xl bg-slate-900/70 border border-dashed border-slate-600 p-3 text-center">
             <div className="text-[11px] text-slate-500">Your Machine ID</div>
-            <div className="text-xl font-extrabold tracking-widest select-all">{fmtId(ownCreds.id)}</div>
+            <div className="text-xl font-extrabold tracking-widest select-all">{fmtId(shownCreds.id)}</div>
             <div className="text-[11px] text-slate-500 mt-2">Password</div>
-            <div className="font-bold select-all">{ownCreds.pw}</div>
+            <div className="font-bold select-all">{shownCreds.pw}</div>
             <button onClick={copyCreds} className="mt-3 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 px-3 py-1.5">{copied ? '✓ copied' : 'Copy ID + password'}</button>
             <div className={`text-[11px] mt-2 ${paused ? 'text-slate-400' : 'text-emerald-400'}`}>{paused ? '● Paused — no one can connect' : '● Online — others can connect with these'}</div>
             <div className="mt-2 flex gap-2 justify-center">
@@ -111,7 +123,7 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
         ) : (
           <>
             <p className="text-sm text-slate-400 mt-1">Show this computer's Machine ID &amp; password so it can be controlled from anywhere.</p>
-            <button onClick={enable} className="mt-3 text-sm rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-semibold px-4 py-2">Show my ID &amp; password</button>
+            <button onClick={showMyCreds} className="mt-3 text-sm rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-semibold px-4 py-2">Show my ID &amp; password</button>
           </>
         )}
       </div>
@@ -176,5 +188,5 @@ function ControlVideo({ stream, send }) {
     if (ref.current) { detach.current = attachFullControl(ref.current, send); ref.current.focus?.() }
     return () => { detach.current?.(); detach.current = null }
   }, [])
-  return <video ref={ref} autoPlay playsInline className="max-h-full max-w-full rounded-lg border border-emerald-500/40 object-contain" tabIndex={0} />
+  return <video ref={ref} autoPlay playsInline className="w-full h-full rounded-lg border border-emerald-500/40 object-contain bg-black" tabIndex={0} />
 }

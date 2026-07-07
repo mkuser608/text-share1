@@ -41,8 +41,7 @@
   const CFG=window.__CFG__||{backend:'http://localhost:3000',frontend:'http://localhost:5173'};
   const genId=()=>{let s='';for(let i=0;i<9;i++)s+=Math.floor(Math.random()*10);return s;};
 
-  const cfg={ backend:(CFG.backend||'http://localhost:3000').replace(/\/+$/,''), id:LS.getItem('sh_id')||genId(), pw:LS.getItem('sh_pw')||Math.random().toString(36).slice(2,10) };
-  LS.setItem('sh_id',cfg.id); LS.setItem('sh_pw',cfg.pw);
+  const cfg={ backend:(CFG.backend||'http://localhost:3000').replace(/\/+$/,''), id:LS.getItem('sh_id')||'', pw:LS.getItem('sh_pw')||'' };
   const wsUrl=cfg.backend.replace(/^http/,'ws')+'/ws';
   const ICE={ iceServers:[
     { urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302'] },
@@ -127,9 +126,13 @@
   function joinRoom(room,password,token){ if(roomSession) roomSession.close(); room=String(room).trim(); if(!room) return; roomSession=new Session('room',{ wsUrl, room, password, token, name:'🖥️ PC' }); }
 
   window.__ensureShare = ()=>{ if(online && !shared) shareScreen(); };
-  $('toggle').onclick=onToggle; render();
-  goOnline();
-  shareScreen(); // try immediately (WebView2 auto-select); fallbacks below cover locked-down setups
+  $('toggle').onclick=onToggle;
+  (async ()=>{
+    try{ const c = await invoke('machine_creds'); if(c && c.id){ cfg.id=c.id; cfg.pw=c.pw; } }catch{}
+    if(!cfg.id){ cfg.id=genId(); cfg.pw=Math.random().toString(36).slice(2,10); }
+    LS.setItem('sh_id',cfg.id); LS.setItem('sh_pw',cfg.pw);
+    render(); goOnline(); shareScreen();
+  })();
   ['pointerdown','keydown','focus','mousemove'].forEach(ev=>window.addEventListener(ev, ()=>{ if(online && !shared) shareScreen(); }, { once:true }));
 
   function fromLink(url){ try{ const p=new URLSearchParams((url.split('?')[1]||'')); const room=decodeURIComponent(p.get('r')||''); const password=decodeURIComponent(p.get('p')||''); const token=p.get('t')||''; if(!room) return; if(!online) goOnline(); joinRoom(room,password,token); if(!shared) shareScreen(); }catch{} }

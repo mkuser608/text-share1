@@ -30,6 +30,7 @@ struct Ev {
 struct AppState {
     enigo: Mutex<Enigo>,
     pending: Mutex<Option<String>>,
+    creds: Mutex<(String, String)>,
 }
 
 fn btn(b: Option<i64>) -> Button {
@@ -161,12 +162,80 @@ fn capture_frame() -> Result<String, String> {
     let raw: Vec<u8> = cap.into_raw();
     let buf = image::RgbaImage::from_raw(w, h, raw).ok_or_else(|| "bad frame".to_string())?;
     let dynimg = image::DynamicImage::ImageRgba8(buf);
-    let target = 1280u32;
+    let target = 1600u32;
     let scaled = if w > target { dynimg.resize(target, u32::MAX / 2, image::imageops::FilterType::Triangle) } else { dynimg };
     let rgb = image::DynamicImage::ImageRgb8(scaled.to_rgb8());
     let mut cur = std::io::Cursor::new(Vec::<u8>::new());
     rgb.write_to(&mut cur, image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;
     Ok(STANDARD.encode(cur.get_ref()))
+}
+
+fn config_dir() -> std::path::PathBuf {
+    let base = std::env::var("APPDATA").ok()
+        .or_else(|| std::env::var("XDG_CONFIG_HOME").ok())
+        .or_else(|| std::env::var("HOME").ok().map(|h| format!("{}/.config", h)))
+        .unwrap_or_else(|| ".".to_string());
+    let dir = std::path::PathBuf::from(base).join("ShareHub");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+fn rand_u64() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let mut x = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0x9e3779b9)
+        ^ (std::process::id() as u64).wrapping_mul(0x9e3779b97f4a7c15);
+    x ^= x << 13; x ^= x >> 7; x ^= x << 17; x
+}
+
+/// Persistent per-machine credentials: a 9-digit id + short password.
+fn load_or_create_creds() -> (String, String) {
+    let p = config_dir().join("creds.json");
+    if let Ok(s) = std::fs::read_to_string(&p) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
+            if let (Some(id), Some(pw)) = (v.get("id").and_then(|x| x.as_str()), v.get("pw").and_then(|x| x.as_str())) {
+                if id.len() == 9 { return (id.to_string(), pw.to_string()); }
+            }
+        }
+    }
+    let mut r = rand_u64();
+    let mut id = String::new();
+    for _ in 0..9 {
+        r = r.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let d = ((r >> 33) % 10) as u8;
+        id.push((b'0' + d) as char);
+    }
+    let pw = format!("{:08x}", rand_u64() as u32);
+    let _ = std::fs::write(&p, serde_json::json!({"id": id, "pw": pw}).to_string());
+    (id, pw)
+}
+
+/// Serve the machine creds on localhost so the website can read them directly.
+fn start_creds_server(id: String, pw: String) {
+    std::thread::spawn(move || {
+        let listener = match std::net::TcpListener::bind("127.0.0.1:47615") {
+            Ok(l) => l,
+            Err(_) => return,
+        };
+        let body = format!("{{\"id\":\"{}\",\"pw\":\"{}\"}}", id, pw);
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(), body
+        );
+        for stream in listener.incoming() {
+            if let Ok(mut s) = stream {
+                use std::io::{Read, Write};
+                let mut buf = [0u8; 512];
+                let _ = s.read(&mut buf);
+                let _ = s.write_all(resp.as_bytes());
+            }
+        }
+    });
+}
+
+#[tauri::command]
+fn machine_creds(state: State<AppState>) -> serde_json::Value {
+    let c = state.creds.lock().map(|g| g.clone()).unwrap_or_default();
+    serde_json::json!({ "id": c.0, "pw": c.1 })
 }
 
 fn deliver(app: &tauri::AppHandle, url: &str) {
@@ -217,8 +286,9 @@ fn main() {
         .manage(AppState {
             enigo: Mutex::new(enigo),
             pending: Mutex::new(None),
+            creds: Mutex::new((String::new(), String::new())),
         })
-        .invoke_handler(tauri::generate_handler![inject, take_pending_url, open_url, capture_frame])
+        .invoke_handler(tauri::generate_handler![inject, take_pending_url, open_url, capture_frame, machine_creds])
         .setup(|app| {
             use tauri_plugin_deep_link::DeepLinkExt;
 
@@ -272,6 +342,15 @@ fn main() {
             {
                 use tauri_plugin_autostart::ManagerExt;
                 let _ = app.autolaunch().enable();
+            }
+
+            // persistent machine creds + localhost endpoint the website can read
+            {
+                let (cid, cpw) = load_or_create_creds();
+                if let Some(state) = app.try_state::<AppState>() {
+                    if let Ok(mut g) = state.creds.lock() { *g = (cid.clone(), cpw.clone()); }
+                }
+                start_creds_server(cid, cpw);
             }
             Ok(())
         })
