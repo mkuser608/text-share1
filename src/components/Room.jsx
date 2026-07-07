@@ -76,7 +76,7 @@ export default function Room({ roomKey }) {
             Connection lost — reconnecting…
           </div>
         )}
-        <RoomShell key={joined.selfId} conn={conn} joined={joined} roomKey={roomKey} initialTab={remote.current ? 'call' : 'editor'} />
+        <RoomShell key={joined.selfId} conn={conn} joined={joined} roomKey={roomKey} initialTab={remote.current ? 'remote' : 'editor'} />
       </>
     )
   }

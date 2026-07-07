@@ -1,0 +1,140 @@
+import React, { useEffect, useRef, useState } from 'react'
+import { colorFor } from '../lib/util'
+import { attachFullControl } from '../lib/remotecontrol'
+
+const fmtId = (s) => String(s || '').replace(/\D/g, '').replace(/(\d{3})(?=\d)/g, '$1 ').trim()
+
+export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCreds }) {
+  const [, force] = useState(0)
+  const [ctrl, setCtrl] = useState(null)   // { peerId, agentId } currently controlling
+  const [panel, setPanel] = useState(null) // null | 'launching' | 'download'
+  const [copied, setCopied] = useState(false)
+  const timerRef = useRef(null)
+  const { agents = {}, myAgentId, os, downloads } = agentApi || {}
+
+  useEffect(() => {
+    const off = pm.on('remote-changed', () => force(n => n + 1))
+    return () => { off(); clearTimeout(timerRef.current) }
+  }, [])
+  useEffect(() => { if (myAgentId) { setPanel(null); clearTimeout(timerRef.current) } }, [myAgentId])
+  useEffect(() => { // stop controlling if that peer/screen goes away
+    if (ctrl && !agents[ctrl.peerId]) setCtrl(null)
+  })
+
+  const enable = () => {
+    agentApi.enableFullControl(); setPanel('launching')
+    clearTimeout(timerRef.current); timerRef.current = setTimeout(() => setPanel(p => (p === 'launching' ? 'download' : p)), 3500)
+  }
+
+  // find a screen stream for a peer
+  const screenOf = (peerId) => {
+    const map = pm.remote.get(peerId); if (!map) return null
+    for (const [, e] of map) if (e.kind === 'screen' && e.stream) return e.stream
+    return null
+  }
+
+  const startControl = (peerId, agentId) => { agentApi.sendToAgent(agentId, { t: 'rc-request', name: myName }); setCtrl({ peerId, agentId }) }
+  const stopControl = () => { if (ctrl) agentApi.sendToAgent(ctrl.agentId, { t: 'rc-stop' }); setCtrl(null) }
+  const sendClipboard = async () => {
+    if (!ctrl) return
+    try { const text = await navigator.clipboard.readText(); if (text) agentApi.sendToAgent(ctrl.agentId, { t: 'rc-text', text }) } catch {}
+  }
+  const copyCreds = () => { if (!ownCreds) return; try { navigator.clipboard.writeText(`ShareHub — ID: ${fmtId(ownCreds.id)}  Password: ${ownCreds.pw}`) } catch {} setCopied(true); setTimeout(() => setCopied(false), 1500) }
+
+  // controlling view
+  if (ctrl) {
+    const stream = screenOf(ctrl.peerId)
+    const name = peers.find(p => p.id === ctrl.peerId)?.name || 'Remote PC'
+    return (
+      <div className="h-full flex flex-col bg-slate-950">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-800 shrink-0">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-sm font-medium">Controlling <b>{name}</b></span>
+          <div className="ml-auto flex gap-2">
+            <button onClick={sendClipboard} className="text-xs rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-1.5">📋 Send clipboard</button>
+            <button onClick={stopControl} className="text-xs rounded-lg bg-rose-500/90 hover:bg-rose-500 text-white font-semibold px-3 py-1.5">Stop</button>
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 grid place-items-center p-2">
+          {stream ? <ControlVideo stream={stream} send={(evt) => agentApi.sendToAgent(ctrl.agentId, evt)} />
+            : <div className="text-slate-400 text-sm">Waiting for {name}'s screen…</div>}
+        </div>
+        <div className="text-[11px] text-slate-500 text-center py-1 shrink-0">Click &amp; type on the screen to control it · your keyboard and mouse drive the remote PC</div>
+      </div>
+    )
+  }
+
+  const controllable = peers.filter(p => agents[p.id])
+
+  return (
+    <div className="h-full overflow-y-auto p-3 sm:p-5 max-w-2xl mx-auto w-full space-y-4">
+      {/* your computer */}
+      <div className="rounded-2xl bg-slate-800/50 border border-slate-700/60 p-4">
+        <div className="font-semibold flex items-center gap-2">🖥️ Your computer</div>
+        {ownCreds ? (
+          <div className="mt-3 rounded-xl bg-slate-900/70 border border-dashed border-slate-600 p-3 text-center">
+            <div className="text-[11px] text-slate-500">Machine ID</div>
+            <div className="text-xl font-extrabold tracking-widest select-all">{fmtId(ownCreds.id)}</div>
+            <div className="text-[11px] text-slate-500 mt-2">Password</div>
+            <div className="font-bold select-all">{ownCreds.pw}</div>
+            <button onClick={copyCreds} className="mt-3 text-xs rounded-lg bg-slate-700 hover:bg-slate-600 px-3 py-1.5">{copied ? '✓ copied' : 'Copy ID + password'}</button>
+            <div className="text-[11px] text-emerald-400 mt-2">● This PC is shareable in this room</div>
+          </div>
+        ) : panel === 'launching' ? (
+          <div className="mt-3 text-xs text-slate-300 flex items-center gap-2"><span className="w-3 h-3 rounded-full border-2 border-sky-400 border-t-transparent animate-spin" /> Opening ShareHub Desktop… click “Go online” and pick your screen.</div>
+        ) : panel === 'download' ? (
+          <div className="mt-3 text-xs">
+            <div className="text-slate-300">Install ShareHub Desktop to make this PC controllable.</div>
+            <div className="flex gap-2 mt-2 flex-wrap">
+              <a href={downloads.windows} className={`rounded-md px-3 py-1.5 font-semibold ${os === 'windows' ? 'bg-sky-500 text-white' : 'bg-slate-700 text-slate-200'}`}>⬇ Windows</a>
+              <a href={downloads.mac} className={`rounded-md px-3 py-1.5 font-semibold ${os === 'mac' ? 'bg-sky-500 text-white' : 'bg-slate-700 text-slate-200'}`}>⬇ macOS</a>
+              <button onClick={enable} className="rounded-md px-3 py-1.5 bg-emerald-600 text-white font-semibold">I've installed it — open</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-slate-400 mt-1">Make this computer controllable by others in this room. Your Machine ID &amp; password appear here once the desktop app is online.</p>
+            <button onClick={enable} className="mt-3 text-sm rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-semibold px-4 py-2">Make this PC controllable here</button>
+          </>
+        )}
+      </div>
+
+      {/* people in this room */}
+      <div className="rounded-2xl bg-slate-800/40 border border-slate-700/60 p-4">
+        <div className="font-semibold">People in this room <span className="text-slate-500 text-sm">({peers.length + 1})</span></div>
+        <div className="mt-2 divide-y divide-slate-800">
+          <Row name={myName + ' (you)'} id={selfId} tag={myAgentId ? 'your PC is shareable' : null} />
+          {peers.map(p => (
+            <Row key={p.id} name={p.name} id={p.id}
+              tag={agents[p.id] ? 'controllable' : null}
+              action={agents[p.id] ? <button onClick={() => startControl(p.id, agents[p.id])} className="text-xs rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-semibold px-3 py-1.5">Connect &amp; control</button> : <span className="text-[11px] text-slate-500">not sharing</span>} />
+          ))}
+        </div>
+        {controllable.length === 0 && <div className="text-xs text-slate-500 mt-2">No one has made their PC controllable yet. Ask them to open ShareHub Desktop and go online (or use the button above for your own PC).</div>}
+      </div>
+    </div>
+  )
+}
+
+function Row({ name, id, tag, action }) {
+  return (
+    <div className="flex items-center gap-3 py-2.5">
+      <div className="w-8 h-8 rounded-full grid place-items-center text-xs font-bold text-slate-900" style={{ background: colorFor(id || name) }}>{name.trim()[0]?.toUpperCase()}</div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium truncate">{name}</div>
+        {tag && <div className="text-[11px] text-emerald-400">● {tag}</div>}
+      </div>
+      {action}
+    </div>
+  )
+}
+
+function ControlVideo({ stream, send }) {
+  const ref = useRef(null); const detach = useRef(null)
+  useEffect(() => { if (ref.current && ref.current.srcObject !== stream) ref.current.srcObject = stream }, [stream])
+  useEffect(() => {
+    if (ref.current) { detach.current = attachFullControl(ref.current, send); ref.current.focus?.() }
+    return () => { detach.current?.(); detach.current = null }
+  }, [])
+  return <video ref={ref} autoPlay playsInline className="max-h-full max-w-full rounded-lg border border-emerald-500/40 object-contain" tabIndex={0} />
+}
