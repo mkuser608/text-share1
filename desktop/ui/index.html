@@ -5,61 +5,50 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>ShareHub Desktop</title>
 <style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
+  :root { color-scheme: dark; } * { box-sizing: border-box; }
   body { margin:0; font-family: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:#0b0f19; color:#e2e8f0; height:100vh; display:flex; flex-direction:column; }
   header { padding:14px 18px 8px; display:flex; align-items:center; gap:8px; } header .logo{font-size:20px} header b{font-size:15px}
   main { flex:1; padding:6px 18px 18px; overflow-y:auto; }
   .card { background:#111827; border:1px solid #1f2937; border-radius:14px; padding:16px; margin-bottom:12px; }
-  .status { display:flex; align-items:center; gap:8px; font-size:14px; }
-  .dot { width:10px; height:10px; border-radius:50%; background:#64748b; }
+  .status { display:flex; align-items:center; gap:8px; font-size:15px; font-weight:600; }
+  .dot { width:11px; height:11px; border-radius:50%; background:#64748b; }
   .dot.ok{background:#34d399;box-shadow:0 0 0 4px #34d39922} .dot.warn{background:#fbbf24} .dot.bad{background:#f87171} .dot.live{background:#f87171;animation:pulse 1s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-  .muted{color:#94a3b8;font-size:12px;margin-top:4px}
-  label{display:block;font-size:12px;color:#94a3b8;margin:12px 0 4px}
-  input{width:100%;background:#0b1220;border:1px solid #334155;color:#e2e8f0;border-radius:10px;padding:11px;font-size:14px}
-  .row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
-  button{border:0;border-radius:10px;padding:11px 16px;font-weight:700;font-size:14px;cursor:pointer}
-  .primary{background:#38bdf8;color:#06283b;width:100%} .danger{background:#f43f5e;color:#fff} .ghost{background:#1f2937;color:#cbd5e1}
-  .sm{padding:8px 12px;font-size:12px}
-  .big{font-size:28px;font-weight:800;letter-spacing:3px;text-align:center;padding:10px;background:#0b1220;border:1px dashed #334155;border-radius:12px;user-select:all}
-  .kv{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px} .kv .v{font-weight:700}
+  .muted{color:#94a3b8;font-size:12px;margin-top:6px}
+  button{border:0;border-radius:10px;padding:12px 16px;font-weight:700;font-size:14px;cursor:pointer}
+  .primary{background:#38bdf8;color:#06283b;width:100%} .danger{background:#f43f5e;color:#fff} .ghost{background:#1f2937;color:#cbd5e1;width:100%}
+  .sm{padding:8px 12px;font-size:12px;width:auto}
+  .row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
   .who{display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0}
   .req{display:flex;align-items:center;gap:8px;background:#1e1b4b;border:1px solid #4338ca;border-radius:10px;padding:10px;margin-top:8px;font-size:13px}
   .warn-box{margin-top:12px;background:#3f1d1d;border:1px solid #7f1d1d;color:#fecaca;border-radius:10px;padding:10px;font-size:12px}
-  .hide{display:none} .copybtn{font-size:11px;background:#1e293b;color:#cbd5e1;border-radius:8px;padding:6px 10px}
-  h3{margin:0 0 2px;font-size:14px}
+  .hide{display:none} h3{margin:0 0 2px;font-size:14px}
+  .hero{text-align:center;padding:26px 10px}
+  .hero .big{font-size:20px;font-weight:800;margin-top:10px}
 </style>
 </head>
 <body>
   <header><span class="logo">⚡</span><b>ShareHub Desktop</b></header>
   <main>
-    <!-- SETUP -->
-    <div id="setupView">
-      <div class="card">
-        <h3>Make this computer shareable</h3>
-        <div class="muted">Give out the Machine ID + password and anyone can view &amp; control this PC from the ShareHub website — even if you have no room open.</div>
-        <label>Server URL</label><input id="server" placeholder="https://your-sharehub-host" />
-        <label>Machine ID</label>
-        <div class="row" style="margin-top:4px"><input id="mid" style="flex:1" /><button class="ghost" id="regen" title="New ID">↻</button></div>
-        <label>Access password</label><input id="mpw" type="text" placeholder="set a password" />
-        <div class="row"><button class="primary" id="startBtn">Start hosting this PC</button></div>
+    <!-- OFFLINE -->
+    <div id="offlineView">
+      <div class="card hero">
+        <div style="font-size:40px">🖥️</div>
+        <div class="big">Let this computer be controlled from the website</div>
+        <div class="muted">Click “Go online”, choose your screen, and this PC becomes reachable. Your Machine ID &amp; password are shown on the website — never here.</div>
+        <div class="row"><button class="primary" id="goOnline">Go online</button></div>
+        <div class="muted" id="offErr" style="color:#fca5a5"></div>
       </div>
     </div>
 
-    <!-- HOSTING -->
-    <div id="hostView" class="hide">
+    <!-- ONLINE -->
+    <div id="onlineView" class="hide">
       <div class="card">
-        <div class="status"><span class="dot" id="mDot"></span><span id="mStatus">Starting…</span></div>
-        <div class="big" id="midOut" style="margin-top:10px">—</div>
-        <div class="kv"><span class="muted">Password</span><span><span class="v" id="mpwOut">—</span> <button class="copybtn" id="copyBtn">Copy</button></span></div>
-        <div class="muted" id="urlOut" style="margin-top:8px"></div>
-      </div>
-
-      <div class="card">
-        <h3>Screen</h3>
-        <div class="muted" id="shareHint">Share your screen so others can see it while controlling.</div>
-        <div class="row"><button class="primary" id="shareBtn">Share this screen</button><button class="ghost hide" id="stopShareBtn">Stop sharing</button></div>
+        <div class="status"><span class="dot" id="mDot"></span><span id="mStatus">Online</span></div>
+        <div class="muted">This computer is reachable from the ShareHub website. Credentials live on the website for security.</div>
+        <div class="row">
+          <button class="primary" id="deviceBtn">Show my ID &amp; password on the website</button>
+        </div>
       </div>
 
       <div class="card" id="reqCard" style="display:none">
@@ -72,27 +61,20 @@
         <div id="controllers"></div>
       </div>
 
-      <div class="card">
-        <h3>Collaboration room <span class="muted" id="roomState"></span></h3>
-        <div id="roomIdle">
-          <div class="muted">Optionally join a room you're collaborating in. People in that room can request control and you just Accept — no Machine ID needed.</div>
-          <label>Room ID</label><input id="rid" placeholder="room name / id" />
-          <label>Room password</label><input id="rpw" type="password" placeholder="room password" />
-          <div class="row"><button class="ghost sm" id="joinRoomBtn">Join room</button></div>
-        </div>
-        <div id="roomActive" class="hide">
-          <div class="status"><span class="dot" id="rDot"></span><span id="rStatus"></span></div>
-          <div class="row"><button class="ghost sm" id="leaveRoomBtn">Leave room</button></div>
-        </div>
+      <div class="card" id="roomCard" style="display:none">
+        <div class="status" style="font-size:13px"><span class="dot" id="rDot"></span><span id="rStatus"></span></div>
+        <div class="row"><button class="ghost sm" id="leaveRoomBtn">Leave room</button></div>
       </div>
 
       <div class="card">
-        <div class="row"><button class="danger" id="disconnect" style="width:100%">Stop hosting &amp; cut all access</button></div>
-        <div class="warn-box">⚠️ While hosting, people with the Machine ID + password (or whom you accept in a room) can see this screen and control its mouse &amp; keyboard. Click “Stop hosting” or close this window to cut access instantly.</div>
+        <div class="row"><button class="ghost" id="reshareBtn">Re-share screen</button></div>
+        <div class="row"><button class="danger" id="goOffline" style="width:100%">Go offline &amp; cut all access</button></div>
+        <div class="warn-box">⚠️ While online, anyone with this computer's ID + password (or whom you Accept in a room) can see this screen and control its mouse &amp; keyboard. Click “Go offline” or close this window to stop instantly.</div>
       </div>
     </div>
   </main>
 
+<script src="config.js"></script>
 <script>
 (function () {
   const T = window.__TAURI__ || null;
@@ -100,10 +82,19 @@
   const listen = T ? T.event.listen : async ()=>(()=>{});
   const $ = (id)=>document.getElementById(id);
   const LS = window.localStorage;
-  const DEFAULT_SERVER='http://localhost:3000';
+  const CFG = window.__CFG__ || { backend:'http://localhost:3000', frontend:'http://localhost:5173' };
   const genId=()=>{ let s=''; for(let i=0;i<9;i++) s+=Math.floor(Math.random()*10); return s; };
-  const fmtId=(s)=>String(s).replace(/\D/g,'').replace(/(\d{3})(?=\d)/g,'$1 ').trim();
   const esc=(s)=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  // generated silently, never shown in this app
+  const cfg = {
+    backend: (CFG.backend||'http://localhost:3000').replace(/\/+$/,''),
+    frontend: (CFG.frontend||'http://localhost:5173').replace(/\/+$/,''),
+    id: LS.getItem('sh_id') || genId(),
+    pw: LS.getItem('sh_pw') || Math.random().toString(36).slice(2,10),
+  };
+  LS.setItem('sh_id',cfg.id); LS.setItem('sh_pw',cfg.pw);
+  const wsUrl = cfg.backend.replace(/^http/,'ws')+'/ws';
 
   const ICE={ iceServers:[
     { urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302'] },
@@ -112,177 +103,118 @@
     { urls:'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject' },
   ]};
 
-  // ---- shared screen + inject ----
   let screenStream=null;
   const inject=(d)=> invoke('inject',{ev:d}).catch(()=>{});
   async function startShare(){
-    try{
-      screenStream = await navigator.mediaDevices.getDisplayMedia({ video:{frameRate:15}, audio:false });
-      screenStream.getVideoTracks()[0].addEventListener('ended', stopShare);
-      for(const s of sessions()) s.attachScreen();
-      $('shareBtn').classList.add('hide'); $('stopShareBtn').classList.remove('hide'); $('shareHint').textContent='Sharing your screen ✓';
-    }catch(e){ if(e && e.name!=='NotAllowedError') $('shareHint').textContent='Screen share failed: '+e.message; }
+    screenStream = await navigator.mediaDevices.getDisplayMedia({ video:{frameRate:15}, audio:false });
+    screenStream.getVideoTracks()[0].addEventListener('ended', ()=>{ screenStream=null; });
+    for(const s of sessions()) s.attachScreen();
   }
-  function stopShare(){
-    if(!screenStream) return;
-    for(const s of sessions()) s.detachScreen();
-    screenStream.getTracks().forEach(t=>t.stop()); screenStream=null;
-    $('shareBtn').classList.remove('hide'); $('stopShareBtn').classList.add('hide'); $('shareHint').textContent='Share your screen so others can see it while controlling.';
-  }
+  function stopShare(){ if(!screenStream) return; for(const s of sessions()) s.detachScreen(); screenStream.getTracks().forEach(t=>t.stop()); screenStream=null; }
 
-  // ---- pending accept requests (room sessions) ----
-  const pending=new Map(); // key -> { session, from, name }
+  const pending=new Map();
   function renderRequests(){
     const items=[...pending.values()];
-    $('reqCard').style.display = items.length?'':'none';
-    $('requests').innerHTML = items.map(r=>{
-      const k=r.session.kind+':'+r.from;
-      return `<div class="req"><span class="dot warn"></span><div style="flex:1"><b>${esc(r.name)}</b> wants to control this PC <span class="muted">(room ${esc(r.session.conf.room)})</span></div>
-      <button class="ghost sm" data-deny="${esc(k)}">Deny</button><button class="primary sm" style="width:auto" data-allow="${esc(k)}">Allow</button></div>`;
-    }).join('');
+    $('reqCard').style.display=items.length?'':'none';
+    $('requests').innerHTML=items.map(r=>{ const k=r.session.kind+':'+r.from;
+      return `<div class="req"><span class="dot warn"></span><div style="flex:1"><b>${esc(r.name)}</b> wants to control this PC</div>
+      <button class="ghost sm" data-deny="${esc(k)}">Deny</button><button class="primary sm" style="width:auto" data-allow="${esc(k)}">Allow</button></div>`; }).join('');
     $('requests').querySelectorAll('[data-allow]').forEach(b=>b.onclick=()=>resolveReq(b.getAttribute('data-allow'),true));
     $('requests').querySelectorAll('[data-deny]').forEach(b=>b.onclick=()=>resolveReq(b.getAttribute('data-deny'),false));
   }
   function resolveReq(key,ok){ const r=pending.get(key); if(!r) return; pending.delete(key); renderRequests(); if(ok) r.session.grant(r.from,r.name); else r.session.deny(r.from); }
+  function renderControllers(){ const all=[]; for(const s of sessions()) for(const [,n] of s.controllers) all.push(n);
+    $('ctlCard').style.display=all.length?'':'none'; $('controllers').innerHTML=all.map(n=>`<div class="who"><span class="dot live"></span>${esc(n)}</div>`).join(''); }
 
-  function renderControllers(){
-    const all=[]; for(const s of sessions()) for(const [,n] of s.controllers) all.push(n);
-    $('ctlCard').style.display = all.length?'':'none';
-    $('controllers').innerHTML = all.map(n=>`<div class="who"><span class="dot live"></span>${esc(n)}</div>`).join('');
-  }
-
-  // ---- Session ----
   class Session {
-    constructor(kind, conf, autoGrant){ this.kind=kind; this.conf=conf; this.autoGrant=autoGrant; this.ws=null; this.selfId=null; this.peers=new Map(); this.controllers=new Map(); this.dead=false; this.connect(); }
-    connect(){
-      if(this.dead) return;
-      const ws=new WebSocket(this.conf.wsUrl); this.ws=ws;
+    constructor(kind, conf, autoGrant){ this.kind=kind; this.conf=conf; this.autoGrant=autoGrant; this.ws=null; this.selfId=null; this.peers=new Map(); this.controllers=new Map(); this.dead=false; this.status={kind:'warn',text:'connecting…'}; this.connect(); }
+    connect(){ if(this.dead) return; const ws=new WebSocket(this.conf.wsUrl); this.ws=ws;
       ws.onopen=()=>ws.send(JSON.stringify({type:'hello',key:this.conf.room}));
       ws.onmessage=(e)=>{ let m; try{m=JSON.parse(e.data);}catch{return;} this.onMsg(m); };
-      ws.onclose=()=>{ if(this.dead) return; this.setStatus('bad','disconnected — retrying'); setTimeout(()=>this.connect(),2000); };
-      ws.onerror=()=>{};
-      this.setStatus('warn','connecting…');
-    }
+      ws.onclose=()=>{ if(this.dead) return; this.setStatus('bad','reconnecting…'); setTimeout(()=>this.connect(),2000); };
+      ws.onerror=()=>{}; this.setStatus('warn','connecting…'); }
     send(o){ if(this.ws&&this.ws.readyState===1) this.ws.send(JSON.stringify(o)); }
     relay(to,d){ this.send({type:'relay',to,d}); } signal(to,d){ this.send({type:'signal',to,d}); }
     setStatus(kind,text){ this.status={kind,text}; updateStatus(); }
-    onMsg(m){
-      switch(m.type){
-        case 'room-status':
-          if(this.kind==='machine') this.send({type: m.exists?'join':'create', password:this.conf.password, name:this.conf.name, role:'human'});
-          else { if(m.exists) this.send({type:'join', password:this.conf.password, name:this.conf.name, role:'human'}); else this.setStatus('bad','room not found'); }
-          break;
-        case 'error':
-          if(m.code==='badpass') this.setStatus('bad', this.kind==='machine'?'ID taken with different password':'wrong room password');
-          else this.setStatus('bad', m.message||'error');
-          break;
-        case 'joined':
-          this.selfId=m.selfId; this.setStatus('ok', this.kind==='machine'?'shareable':'in room "'+this.conf.room+'"');
-          (m.peers||[]).forEach(p=>{ if(p.role!=='agent') this.addPeer(p.id); });
-          this.announce();
-          break;
-        case 'peer-joined': if(m.role!=='agent'){ this.addPeer(m.id); this.announce(); } break;
-        case 'peer-left': this.removePeer(m.id); if(this.controllers.delete(m.id)){ renderControllers(); } { const k=this.kind+':'+m.id; if(pending.delete(k)) renderRequests(); } break;
-        case 'signal': this.onSignal(m.from,m.d); break;
-        case 'relay': this.onRelay(m.from,m.d); break;
-      }
-    }
+    onMsg(m){ switch(m.type){
+      case 'room-status':
+        if(this.kind==='machine') this.send({type:m.exists?'join':'create', password:this.conf.password, name:this.conf.name, role:'human'});
+        else { if(m.exists) this.send({type:'join', password:this.conf.password, name:this.conf.name, role:'human'}); else this.setStatus('bad','room not found'); }
+        break;
+      case 'error': this.setStatus('bad', m.code==='badpass'?(this.kind==='machine'?'ID taken':'wrong room password'):(m.message||'error')); break;
+      case 'joined': this.selfId=m.selfId; this.setStatus('ok', this.kind==='machine'?'Online — reachable':'In room "'+this.conf.room+'"');
+        (m.peers||[]).forEach(p=>{ if(p.role!=='agent') this.addPeer(p.id); }); this.announce(); break;
+      case 'peer-joined': if(m.role!=='agent'){ this.addPeer(m.id); this.announce(); } break;
+      case 'peer-left': this.removePeer(m.id); if(this.controllers.delete(m.id)) renderControllers(); { const k=this.kind+':'+m.id; if(pending.delete(k)) renderRequests(); } break;
+      case 'signal': this.onSignal(m.from,m.d); break;
+      case 'relay': this.onRelay(m.from,m.d); break;
+    } }
     announce(){ this.relay('*',{t:'agent-bind', agentId:this.selfId, ownerId:this.selfId}); if(this.conf.token) this.relay('*',{t:'agent-ready', agentId:this.selfId, token:this.conf.token}); }
     attachScreen(){ if(!screenStream) return; for(const [,p] of this.peers){ for(const t of screenStream.getTracks()) p.pc.addTrack(t,screenStream); if(p.dc&&p.dc.readyState==='open') p.dc.send(JSON.stringify({t:'stream-meta',sid:screenStream.id,kind:'screen'})); } }
     detachScreen(){ for(const [,p] of this.peers){ for(const s of p.pc.getSenders()){ if(s.track&&s.track.kind==='video'){ try{p.pc.removeTrack(s);}catch{} } } } }
-    addPeer(id){
-      if(this.peers.has(id)) return;
-      const polite=String(this.selfId)>String(id); const pc=new RTCPeerConnection(ICE);
+    addPeer(id){ if(this.peers.has(id)) return; const polite=String(this.selfId)>String(id); const pc=new RTCPeerConnection(ICE);
       const st={pc,dc:null,polite,makingOffer:false,ignoreOffer:false,candQueue:[]}; this.peers.set(id,st);
       const dc=pc.createDataChannel('ctl',{negotiated:true,id:0}); dc.binaryType='arraybuffer';
       dc.onopen=()=>{ if(screenStream) dc.send(JSON.stringify({t:'stream-meta',sid:screenStream.id,kind:'screen'})); }; st.dc=dc;
       pc.onicecandidate=(e)=>{ if(e.candidate) this.signal(id,{candidate:e.candidate}); };
       pc.onnegotiationneeded=async()=>{ try{ st.makingOffer=true; await pc.setLocalDescription(); this.signal(id,{description:pc.localDescription}); }catch(e){console.error(e);} finally{ st.makingOffer=false; } };
       pc.oniceconnectionstatechange=()=>{ if(pc.iceConnectionState==='failed'){ try{pc.restartIce();}catch{} } };
-      if(screenStream) for(const t of screenStream.getTracks()) pc.addTrack(t,screenStream);
-    }
+      if(screenStream) for(const t of screenStream.getTracks()) pc.addTrack(t,screenStream); }
     removePeer(id){ const p=this.peers.get(id); if(!p) return; try{p.pc.close();}catch{} this.peers.delete(id); }
-    async onSignal(from,d){
-      const p=this.peers.get(from); if(!p) return; const pc=p.pc;
-      try{
-        if(d.description){
-          const collision=d.description.type==='offer'&&(p.makingOffer||pc.signalingState!=='stable');
-          p.ignoreOffer=!p.polite&&collision; if(p.ignoreOffer) return;
-          await pc.setRemoteDescription(d.description);
-          for(const c of p.candQueue){ try{await pc.addIceCandidate(c);}catch{} } p.candQueue=[];
-          if(d.description.type==='offer'){ await pc.setLocalDescription(); this.signal(from,{description:pc.localDescription}); }
-        } else if(d.candidate){
-          if(pc.remoteDescription&&pc.remoteDescription.type){ try{await pc.addIceCandidate(d.candidate);}catch(e){ if(!p.ignoreOffer) throw e; } }
-          else p.candQueue.push(d.candidate);
-        }
-      }catch(e){ console.error('signal',e); }
-    }
+    async onSignal(from,d){ const p=this.peers.get(from); if(!p) return; const pc=p.pc;
+      try{ if(d.description){ const collision=d.description.type==='offer'&&(p.makingOffer||pc.signalingState!=='stable'); p.ignoreOffer=!p.polite&&collision; if(p.ignoreOffer) return;
+          await pc.setRemoteDescription(d.description); for(const c of p.candQueue){ try{await pc.addIceCandidate(c);}catch{} } p.candQueue=[];
+          if(d.description.type==='offer'){ await pc.setLocalDescription(); this.signal(from,{description:pc.localDescription}); } }
+        else if(d.candidate){ if(pc.remoteDescription&&pc.remoteDescription.type){ try{await pc.addIceCandidate(d.candidate);}catch(e){ if(!p.ignoreOffer) throw e; } } else p.candQueue.push(d.candidate); } }
+      catch(e){ console.error('signal',e); } }
     grant(from,name){ this.controllers.set(from,name+(this.kind==='room'?' · room':'')); renderControllers(); this.relay(from,{t:'rc-grant',agentId:this.selfId}); }
     deny(from){ this.relay(from,{t:'rc-deny'}); }
-    onRelay(from,d){
-      if(!d||!d.t) return;
-      if(d.t==='rc-request'){
-        if(this.autoGrant) this.grant(from, d.name||'A user');
-        else { const k=this.kind+':'+from; if(!pending.has(k)&&!this.controllers.has(from)){ pending.set(k,{session:this,from,name:d.name||'A user'}); renderRequests(); } }
-        return;
-      }
+    onRelay(from,d){ if(!d||!d.t) return;
+      if(d.t==='rc-request'){ if(this.autoGrant) this.grant(from,d.name||'A user'); else { const k=this.kind+':'+from; if(!pending.has(k)&&!this.controllers.has(from)){ pending.set(k,{session:this,from,name:d.name||'A user'}); renderRequests(); } } return; }
       if(d.t==='rc-stop'){ if(this.controllers.delete(from)) renderControllers(); const k=this.kind+':'+from; if(pending.delete(k)) renderRequests(); return; }
-      if(d.t.startsWith('rc-')){
-        if(this.controllers.has(from)) inject(d);
-        else if(this.autoGrant){ this.grant(from,'A user'); inject(d); }
-        // else: awaiting Accept — ignore control until allowed
-      }
-    }
+      if(d.t.startsWith('rc-')){ if(this.controllers.has(from)) inject(d); else if(this.autoGrant){ this.grant(from,'A user'); inject(d); } } }
     close(){ this.dead=true; for(const id of [...this.peers.keys()]) this.removePeer(id); if(this.ws){try{this.ws.close();}catch{}} }
   }
 
-  // ---- session registry ----
   let machine=null, roomSession=null;
   function sessions(){ return [machine, roomSession].filter(Boolean); }
-
   function updateStatus(){
-    if(machine&&machine.status){ $('mDot').className='dot '+(machine.status.kind||''); $('mStatus').textContent = machine.status.text==='shareable'?'This computer is shareable':('Machine — '+machine.status.text); }
-    if(roomSession&&roomSession.status){ $('rDot').className='dot '+(roomSession.status.kind||''); $('rStatus').textContent=roomSession.status.text; }
+    if(machine){ $('mDot').className='dot '+(machine.status.kind||''); $('mStatus').textContent = machine.status.kind==='ok'?'Online — reachable from the website':('Machine — '+machine.status.text); }
+    $('roomCard').style.display = roomSession?'':'none';
+    if(roomSession){ $('rDot').className='dot '+(roomSession.status.kind||''); $('rStatus').textContent='Collaboration room: '+roomSession.status.text; }
   }
 
-  // ---- config ----
-  let cfg={ server: LS.getItem('sh_server')||DEFAULT_SERVER, id: LS.getItem('sh_id')||genId(), pw: LS.getItem('sh_pw')||Math.random().toString(36).slice(2,8) };
-  LS.setItem('sh_id',cfg.id); LS.setItem('sh_pw',cfg.pw); LS.setItem('sh_server',cfg.server);
-  $('server').value=cfg.server; $('mid').value=fmtId(cfg.id); $('mpw').value=cfg.pw;
-  $('regen').onclick=()=>{ cfg.id=genId(); $('mid').value=fmtId(cfg.id); };
-  const wsFrom=(server)=> server.replace(/^http/,'ws').replace(/\/+$/,'')+'/ws';
-
-  function startHosting(){
-    cfg.server=($('server').value.trim()||DEFAULT_SERVER).replace(/\/+$/,''); cfg.id=($('mid').value.replace(/\D/g,'')||genId()); cfg.pw=($('mpw').value.trim()||Math.random().toString(36).slice(2,8));
-    LS.setItem('sh_server',cfg.server); LS.setItem('sh_id',cfg.id); LS.setItem('sh_pw',cfg.pw);
-    $('setupView').classList.add('hide'); $('hostView').classList.remove('hide');
-    $('midOut').textContent=fmtId(cfg.id); $('mpwOut').textContent=cfg.pw; $('urlOut').textContent='Website: '+cfg.server;
-    machine = new Session('machine', { wsUrl:wsFrom(cfg.server), server:cfg.server, room:cfg.id, password:cfg.pw, name:'🖥️ Machine '+fmtId(cfg.id) }, /*autoGrant*/ true);
+  async function goOnline(){
+    $('offErr').textContent='';
+    try { await startShare(); }
+    catch(e){ if(e && e.name==='NotAllowedError'){ $('offErr').textContent='You need to pick a screen to share.'; return; } $('offErr').textContent='Screen share failed: '+(e&&e.message||e); return; }
+    $('offlineView').classList.add('hide'); $('onlineView').classList.remove('hide');
+    machine = new Session('machine', { wsUrl, room:cfg.id, password:cfg.pw, name:'🖥️ Machine' }, true);
   }
-  function joinRoom(room, password, token){
-    if(roomSession) roomSession.close();
-    room=String(room).trim(); if(!room) return;
-    $('roomIdle').classList.add('hide'); $('roomActive').classList.remove('hide'); $('roomState').textContent='('+room+')';
-    roomSession = new Session('room', { wsUrl:wsFrom(cfg.server), server:cfg.server, room, password, token, name:'🖥️ '+fmtId(cfg.id)+' (PC)' }, /*autoGrant*/ false);
-  }
-  function leaveRoom(){ if(roomSession){ roomSession.close(); roomSession=null; } for(const k of [...pending.keys()]) if(k.startsWith('room:')) pending.delete(k); renderRequests(); renderControllers(); $('roomActive').classList.add('hide'); $('roomIdle').classList.remove('hide'); $('roomState').textContent=''; }
+  function goOffline(){ stopShare(); if(machine)machine.close(); if(roomSession)roomSession.close(); machine=roomSession=null; pending.clear(); renderRequests(); renderControllers(); $('onlineView').classList.add('hide'); $('offlineView').classList.remove('hide'); }
+  function joinRoom(room, password, token){ if(roomSession) roomSession.close(); room=String(room).trim(); if(!room) return;
+    roomSession = new Session('room', { wsUrl, room, password, token, name:'🖥️ PC' }, false); updateStatus(); }
+  function leaveRoom(){ if(roomSession){ roomSession.close(); roomSession=null; } for(const k of [...pending.keys()]) if(k.startsWith('room:')) pending.delete(k); renderRequests(); renderControllers(); updateStatus(); }
 
-  $('startBtn').onclick=startHosting;
-  $('shareBtn').onclick=startShare; $('stopShareBtn').onclick=stopShare;
-  $('joinRoomBtn').onclick=()=>joinRoom($('rid').value, $('rpw').value);
+  function openDevicePage(){
+    const payload = btoa(JSON.stringify({ id: cfg.id, pw: cfg.pw, server: cfg.backend }));
+    const url = cfg.frontend + '/#device=' + encodeURIComponent(payload);
+    invoke('open_url', { url }).catch(()=>{ try{ window.open(url,'_blank'); }catch{} });
+  }
+
+  $('goOnline').onclick=goOnline;
+  $('goOffline').onclick=goOffline;
+  $('reshareBtn').onclick=()=>startShare().catch(()=>{});
   $('leaveRoomBtn').onclick=leaveRoom;
-  $('copyBtn').onclick=()=>{ try{ navigator.clipboard.writeText(`ShareHub Machine ID: ${fmtId(cfg.id)}  Password: ${cfg.pw}  (${cfg.server})`); $('copyBtn').textContent='Copied!'; setTimeout(()=>$('copyBtn').textContent='Copy',1500);}catch{} };
-  $('disconnect').onclick=()=>{ stopShare(); if(machine)machine.close(); if(roomSession)roomSession.close(); machine=roomSession=null; pending.clear(); renderRequests(); renderControllers(); $('hostView').classList.add('hide'); $('setupView').classList.remove('hide'); };
+  $('deviceBtn').onclick=openDevicePage;
 
-  // deep link from website "Enable full control" → join THAT room (accept-based); machine stays hosting
+  // website "Enable full control" deep-link → also join that room (accept-based)
   function fromLink(url){
     try{ const p=new URLSearchParams((url.split('?')[1]||''));
-      const server=decodeURIComponent(p.get('s')||''); const room=decodeURIComponent(p.get('r')||''); const password=decodeURIComponent(p.get('p')||'');
+      const room=decodeURIComponent(p.get('r')||''); const password=decodeURIComponent(p.get('p')||''); const token=p.get('t')||'';
       if(!room) return;
-      if(server){ cfg.server=server.replace(/\/+$/,''); LS.setItem('sh_server',cfg.server); if($('server')) $('server').value=cfg.server; }
-      const token=p.get('t')||'';
-      if(!machine) startHosting();       // ensure the machine session is up first
-      joinRoom(room, password, token);          // then also join the collaboration room
+      if(!machine) goOnline().then(()=>joinRoom(room,password,token));
+      else joinRoom(room,password,token);
     }catch{}
   }
   listen('deep-link',(e)=>fromLink(e.payload));

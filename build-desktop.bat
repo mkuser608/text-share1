@@ -16,6 +16,9 @@ echo.
 echo === Generating app icons ===
 call npx --yes @tauri-apps/cli icon "%~dp0desktop\icon-source.png"
 
+echo === Writing config from .env ===
+call node "%~dp0desktop\gen-config.mjs"
+
 echo.
 echo === Launching ShareHub Desktop (first build compiles Rust, be patient) ===
 call npm run tauri dev

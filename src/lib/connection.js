@@ -19,8 +19,11 @@ export class RoomConnection {
   emit(type, data) { this.listeners.get(type)?.forEach(fn => fn(data)) }
 
   _connect() {
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    const ws = new WebSocket(`${proto}://${location.host}/ws`)
+    const base = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || ''
+    const url = base
+      ? base.replace(/^http/, 'ws').replace(/\/+$/, '') + '/ws'
+      : (location.protocol === 'https:' ? 'wss' : 'ws') + '://' + location.host + '/ws'
+    const ws = new WebSocket(url)
     this.ws = ws
     ws.onopen = () => {
       this.retry = 0

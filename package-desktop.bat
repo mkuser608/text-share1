@@ -9,6 +9,9 @@ echo === Ensuring deps + icons ===
 call npm install
 call npx --yes @tauri-apps/cli icon "%~dp0desktop\icon-source.png"
 
+echo === Writing config from .env ===
+call node "%~dp0desktop\gen-config.mjs"
+
 echo.
 echo === Building RELEASE installer (this takes several minutes) ===
 call npm run tauri build || (echo build failed & pause & exit /b 1)

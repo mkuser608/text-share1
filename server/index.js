@@ -8,6 +8,18 @@ import * as Y from 'yjs'
 import bcrypt from 'bcryptjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+// minimal .env loader (no dependency) — reads ../.env into process.env
+try {
+  const envPath = path.join(__dirname, '..', '.env')
+  if (fs.existsSync(envPath)) {
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*?)\s*$/)
+      if (m && !(m[1] in process.env)) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '')
+    }
+  }
+} catch { /* noop */ }
+
 const PORT = process.env.PORT || 3000
 const DIST = path.join(__dirname, '..', 'dist')
 // Where locally-built desktop installers are dropped (.exe/.msi/.dmg).
@@ -45,10 +57,10 @@ app.get('/download', (_req, res) => {
 a.btn{display:inline-block;margin:8px 6px;padding:12px 18px;border-radius:10px;background:#38bdf8;color:#06283b;font-weight:700;text-decoration:none}
 a.off{background:#334155;color:#94a3b8;pointer-events:none}small{color:#94a3b8}</style></head>
 <body><div class="card"><div style="font-size:40px">⚡</div><h2>ShareHub Desktop</h2>
-<p style="color:#94a3b8">Install once to allow full-PC control for pair debugging.</p>
+<p style="color:#94a3b8">Install once so this computer can be controlled from the website.</p>
 <a class="btn ${hasWin ? '' : 'off'}" href="/download/windows">⬇ Windows</a>
 <a class="btn ${hasMac ? '' : 'off'}" href="/download/mac">⬇ macOS</a>
-<p><small>After installing, return to your room and click “Enable full control”.</small></p></div></body></html>`)
+<p><small>After installing, open it and click “Go online”, then use its Machine ID + password on the website.</small></p></div></body></html>`)
 })
 
 // SPA fallback: every room path serves the app.
@@ -136,7 +148,6 @@ wss.on('connection', (ws) => {
         }
 
         // Generic app relay: targeted (msg.to = peerId) or broadcast (msg.to = '*').
-        // Used for full-PC remote-control events between browsers and the desktop app.
         case 'relay': {
           const r = room(); if (!authed || !r) return
           const payload = { type: 'relay', from: selfId, role, d: msg.d }
@@ -145,7 +156,6 @@ wss.on('connection', (ws) => {
           break
         }
 
-        // P2P file metadata (data flows peer-to-peer, never through here)
         case 'file-offer': {
           const r = room(); if (!authed || !r) return
           const f = {

@@ -139,6 +139,17 @@ fn take_pending_url(state: State<AppState>) -> Option<String> {
     state.pending.lock().ok().and_then(|mut p| p.take())
 }
 
+/// Open a URL in the user's default browser (no extra plugin needed).
+#[tauri::command]
+fn open_url(url: String) {
+    #[cfg(target_os = "windows")]
+    { let _ = std::process::Command::new("cmd").args(["/C", "start", "", &url]).spawn(); }
+    #[cfg(target_os = "macos")]
+    { let _ = std::process::Command::new("open").arg(&url).spawn(); }
+    #[cfg(target_os = "linux")]
+    { let _ = std::process::Command::new("xdg-open").arg(&url).spawn(); }
+}
+
 fn deliver(app: &tauri::AppHandle, url: &str) {
     if !url.starts_with("sharehub://") {
         return;
@@ -171,7 +182,7 @@ fn main() {
             enigo: Mutex::new(enigo),
             pending: Mutex::new(None),
         })
-        .invoke_handler(tauri::generate_handler![inject, take_pending_url])
+        .invoke_handler(tauri::generate_handler![inject, take_pending_url, open_url])
         .setup(|app| {
             use tauri_plugin_deep_link::DeepLinkExt;
 

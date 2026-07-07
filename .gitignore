@@ -6,3 +6,5 @@ dist/
 desktop/installers/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
+.env
+desktop/ui/config.js
