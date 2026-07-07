@@ -6,8 +6,8 @@ const fmtId = (s) => String(s || '').replace(/\D/g, '').replace(/(\d{3})(?=\d)/g
 
 export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCreds }) {
   const [, force] = useState(0)
-  const [ctrl, setCtrl] = useState(null)   // { peerId, agentId } currently controlling
-  const [panel, setPanel] = useState(null) // null | 'launching' | 'download'
+  const [ctrl, setCtrl] = useState(null)
+  const [panel, setPanel] = useState(null)
   const [copied, setCopied] = useState(false)
   const timerRef = useRef(null)
   const { agents = {}, myAgentId, os, downloads } = agentApi || {}
@@ -17,21 +17,17 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
     return () => { off(); clearTimeout(timerRef.current) }
   }, [])
   useEffect(() => { if (myAgentId) { setPanel(null); clearTimeout(timerRef.current) } }, [myAgentId])
-  useEffect(() => { // stop controlling if that peer/screen goes away
-    if (ctrl && !agents[ctrl.peerId]) setCtrl(null)
-  })
+  useEffect(() => { if (ctrl && !agents[ctrl.peerId]) setCtrl(null) })
 
   const enable = () => {
     agentApi.enableFullControl(); setPanel('launching')
     clearTimeout(timerRef.current); timerRef.current = setTimeout(() => setPanel(p => (p === 'launching' ? 'download' : p)), 3500)
   }
 
-  // find a screen stream for a peer
+  // The desktop app only ever sends a screen, so accept any stream with a live
+  // video track (WebRTC can remap stream ids, so the 'screen' label may not match).
   const screenOf = (peerId) => {
     const map = pm.remote.get(peerId); if (!map) return null
-    // Prefer a 'screen'-tagged stream, but the desktop app only ever sends a
-    // screen, so accept any stream that has a live video track (the stream id
-    // can be remapped by WebRTC, so the 'screen' label may not line up).
     let fallback = null
     for (const [, e] of map) {
       if (!e.stream) continue
@@ -50,7 +46,6 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
   }
   const copyCreds = () => { if (!ownCreds) return; try { navigator.clipboard.writeText(`ShareHub — ID: ${fmtId(ownCreds.id)}  Password: ${ownCreds.pw}`) } catch {} setCopied(true); setTimeout(() => setCopied(false), 1500) }
 
-  // controlling view
   if (ctrl) {
     const stream = screenOf(ctrl.peerId)
     const name = peers.find(p => p.id === ctrl.peerId)?.name || 'Remote PC'
@@ -66,7 +61,7 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
         </div>
         <div className="flex-1 min-h-0 grid place-items-center p-2">
           {stream ? <ControlVideo stream={stream} send={(evt) => agentApi.sendToAgent(ctrl.agentId, evt)} />
-            : <div className="text-slate-400 text-sm">Waiting for {name}'s screen…</div>}
+            : <div className="text-slate-400 text-sm text-center">Connecting to {name}'s screen…<div className="text-xs text-slate-600 mt-1">If this doesn't clear, make sure ShareHub Desktop is online on that PC.</div></div>}
         </div>
         <div className="text-[11px] text-slate-500 text-center py-1 shrink-0">Click &amp; type on the screen to control it · your keyboard and mouse drive the remote PC</div>
       </div>
@@ -77,7 +72,6 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
 
   return (
     <div className="h-full overflow-y-auto p-3 sm:p-5 max-w-2xl mx-auto w-full space-y-4">
-      {/* your computer */}
       <div className="rounded-2xl bg-slate-800/50 border border-slate-700/60 p-4">
         <div className="font-semibold flex items-center gap-2">🖥️ Your computer</div>
         {ownCreds ? (
@@ -90,7 +84,7 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
             <div className="text-[11px] text-emerald-400 mt-2">● This PC is shareable in this room</div>
           </div>
         ) : panel === 'launching' ? (
-          <div className="mt-3 text-xs text-slate-300 flex items-center gap-2"><span className="w-3 h-3 rounded-full border-2 border-sky-400 border-t-transparent animate-spin" /> Opening ShareHub Desktop… click “Go online” and pick your screen.</div>
+          <div className="mt-3 text-xs text-slate-300 flex items-center gap-2"><span className="w-3 h-3 rounded-full border-2 border-sky-400 border-t-transparent animate-spin" /> Opening ShareHub Desktop…</div>
         ) : panel === 'download' ? (
           <div className="mt-3 text-xs">
             <div className="text-slate-300">Install ShareHub Desktop to make this PC controllable.</div>
@@ -108,7 +102,6 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
         )}
       </div>
 
-      {/* people in this room */}
       <div className="rounded-2xl bg-slate-800/40 border border-slate-700/60 p-4">
         <div className="font-semibold">People in this room <span className="text-slate-500 text-sm">({peers.length + 1})</span></div>
         <div className="mt-2 divide-y divide-slate-800">
@@ -119,7 +112,7 @@ export default function RemotePane({ pm, peers, myName, selfId, agentApi, ownCre
               action={agents[p.id] ? <button onClick={() => startControl(p.id, agents[p.id])} className="text-xs rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-semibold px-3 py-1.5">Connect &amp; control</button> : <span className="text-[11px] text-slate-500">not sharing</span>} />
           ))}
         </div>
-        {controllable.length === 0 && <div className="text-xs text-slate-500 mt-2">No one has made their PC controllable yet. Ask them to open ShareHub Desktop and go online (or use the button above for your own PC).</div>}
+        {controllable.length === 0 && <div className="text-xs text-slate-500 mt-2">No one has made their PC controllable yet. Ask them to open ShareHub Desktop (it goes online automatically), or use the button above for your own PC.</div>}
       </div>
     </div>
   )
@@ -140,4 +133,10 @@ function Row({ name, id, tag, action }) {
 
 function ControlVideo({ stream, send }) {
   const ref = useRef(null); const detach = useRef(null)
-  useEffect(() => { if (ref.current && ref.current.srcObject 
+  useEffect(() => { if (ref.current && ref.current.srcObject !== stream) ref.current.srcObject = stream }, [stream])
+  useEffect(() => {
+    if (ref.current) { detach.current = attachFullControl(ref.current, send); ref.current.focus?.() }
+    return () => { detach.current?.(); detach.current = null }
+  }, [])
+  return <video ref={ref} autoPlay playsInline className="max-h-full max-w-full rounded-lg border border-emerald-500/40 object-contain" tabIndex={0} />
+}
