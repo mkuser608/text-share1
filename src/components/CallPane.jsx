@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { colorFor } from '../lib/util'
 
-export default function CallPane({ pm, peers, myName, selfId, chat, sendChat, timeline }) {
+export default function CallPane({ pm, peers, myName, selfId, chat, sendChat, timeline, agents = {} }) {
   const [media, setMedia] = useState(null)
   const [micOn, setMicOn] = useState(true)
   const [camOn, setCamOn] = useState(true)
@@ -33,8 +33,9 @@ export default function CallPane({ pm, peers, myName, selfId, chat, sendChat, ti
   // remote media streams
   const tiles = []
   for (const p of peers) {
+    if (agents[p.id]) continue // machines/screens belong to the Remote tab, not the call
     const map = pm.remote.get(p.id); if (!map) continue
-    for (const [sid, e] of map) if (e.kind === 'media' && e.stream) tiles.push({ key: p.id + ':' + sid, name: p.name, stream: e.stream })
+    for (const [sid, e] of map) if (e.stream && e.stream.getVideoTracks && e.stream.getAudioTracks && (e.stream.getAudioTracks().length || e.kind === 'media')) tiles.push({ key: p.id + ':' + sid, name: p.name, stream: e.stream })
   }
   const callActive = tiles.length > 0
   const inCall = !!media

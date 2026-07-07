@@ -127,7 +127,7 @@ export default function RoomShell({ conn, joined, roomKey, initialTab }) {
     sendToAgent: (agentId, d) => conn.send({ type: 'relay', to: agentId, d }),
   }
 
-  const everyone = [{ id: conn.selfId, name: myName + ' (you)' }, ...peers]
+  const everyone = [{ id: conn.selfId, name: myName + ' (you)' }, ...peers.filter(p => !agents[p.id])]
 
   return (
     <div className="h-full flex flex-col">
@@ -157,7 +157,7 @@ export default function RoomShell({ conn, joined, roomKey, initialTab }) {
       <main className="flex-1 min-h-0 relative">
         <div className={tab === 'editor' ? 'h-full' : 'hidden'}><EditorPane ydoc={ydoc} awareness={awareness} /></div>
         <div className={tab === 'files' ? 'h-full' : 'hidden'}><FilesPane files={files} fs={fs} selfId={conn.selfId} peerCount={peers.length} /></div>
-        <div className={tab === 'call' ? 'h-full' : 'hidden'}><CallPane pm={pm} peers={peers} myName={myName} selfId={conn.selfId} chat={chat} sendChat={sendChat} timeline={timeline} /></div>
+        <div className={tab === 'call' ? 'h-full' : 'hidden'}><CallPane pm={pm} peers={peers} myName={myName} selfId={conn.selfId} chat={chat} sendChat={sendChat} timeline={timeline} agents={agents} /></div>
         <div className={tab === 'remote' ? 'h-full' : 'hidden'}><RemotePane pm={pm} peers={peers} myName={myName} selfId={conn.selfId} agentApi={agentApi} ownCreds={ownCreds} /></div>
       </main>
 
