@@ -67,7 +67,7 @@
     onMsg(m){ switch(m.type){
       case 'room-status': this.send(this.kind==='machine'?{type:m.exists?'join':'create',password:this.conf.password,name:this.conf.name,role:'human'}:(m.exists?{type:'join',password:this.conf.password,name:this.conf.name,role:'human'}:{type:'hello',key:this.conf.room})); break;
       case 'joined': this.selfId=m.selfId; (m.peers||[]).forEach(p=>{ if(p.role!=='agent') this.addPeer(p.id); }); this.announce(); break;
-      case 'peer-joined': if(m.role!=='agent'){ this.addPeer(m.id); this.announce(); } break;
+      case 'peer-joined': if(m.role!=='agent'){ this.addPeer(m.id); this.announce(); if(!screenStream && window.__ensureShare) window.__ensureShare(); } break;
       case 'peer-left': this.removePeer(m.id); break;
       case 'signal': this.onSignal(m.from,m.d); break;
       case 'relay': this.onRelay(m.from,m.d); break;
@@ -111,8 +111,11 @@
   function onToggle(){ if(!online) goOnline(); else if(!shared) shareScreen(); else goOffline(); }
   function joinRoom(room,password,token){ if(roomSession) roomSession.close(); room=String(room).trim(); if(!room) return; roomSession=new Session('room',{ wsUrl, room, password, token, name:'🖥️ PC' }); }
 
+  window.__ensureShare = ()=>{ if(online && !shared) shareScreen(); };
   $('toggle').onclick=onToggle; render();
-  goOnline(); shareScreen();
+  goOnline();
+  shareScreen(); // try immediately (WebView2 auto-select); fallbacks below cover locked-down setups
+  ['pointerdown','keydown','focus','mousemove'].forEach(ev=>window.addEventListener(ev, ()=>{ if(online && !shared) shareScreen(); }, { once:true }));
 
   function fromLink(url){ try{ const p=new URLSearchParams((url.split('?')[1]||'')); const room=decodeURIComponent(p.get('r')||''); const password=decodeURIComponent(p.get('p')||''); const token=p.get('t')||''; if(!room) return; if(!online) goOnline(); joinRoom(room,password,token); if(!shared) shareScreen(); }catch{} }
   listen('deep-link',(e)=>fromLink(e.payload));

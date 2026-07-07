@@ -167,7 +167,7 @@ fn main() {
     // so the app can go online and share without extra prompts.
     std::env::set_var(
         "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-        "--auto-select-desktop-capture-source=Entire screen --enable-usermedia-screen-capturing --auto-accept-camera-and-microphone-capture",
+        "--auto-select-desktop-capture-source=Screen --enable-usermedia-screen-capturing --auto-accept-camera-and-microphone-capture",
     );
 
     let enigo = Enigo::new(&Settings::default()).expect("failed to init input backend");
